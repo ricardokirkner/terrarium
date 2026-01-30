@@ -3,7 +3,8 @@
 
 .PHONY: help install test test-coverage lint format typecheck clean
 
-SRC := main.py
+SRC := main.py node.py
+SRC_MODULES := main node
 
 # Default target
 .DEFAULT_GOAL := help
@@ -43,7 +44,7 @@ test: ## Run all tests
 
 test-coverage: ## Run tests with coverage report
 	@echo "🧪 Running tests with coverage..."
-	uv run pytest tests/ --cov=$(SRC) --cov-report=html --cov-report=term
+	uv run pytest tests/ $(foreach mod,$(SRC_MODULES),--cov=$(mod)) --cov-report=html --cov-report=term
 	@echo "✅ Coverage report generated in htmlcov/"
 
 test-watch: ## Run tests in watch mode (requires pytest-watch)
