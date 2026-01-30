@@ -32,7 +32,7 @@ class Node(ABC):
         Args:
             name: A unique identifier for this node.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def tick(self, state) -> NodeStatus:
@@ -45,7 +45,7 @@ class Node(ABC):
             NodeStatus indicating the result of this tick (SUCCESS, FAILURE, RUNNING,
             or IDLE).
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def reset(self):
@@ -54,4 +54,4 @@ class Node(ABC):
         Called when the node needs to be restarted, typically when a parent
         node restarts its children or when the tree is reset.
         """
-        pass
+        pass  # pragma: no cover
