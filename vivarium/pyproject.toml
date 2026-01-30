@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Vivarium is a behavior tree execution environment"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["black>=26.1.0", "pre-commit>=4.5.1", "ruff>=0.14.14"]
+dependencies = []
 
 [tool.black]
 line-length = 88
@@ -18,3 +18,13 @@ exclude = ["build", "dist", ".venv", ".git"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "C", "I"]
 ignore = ["E203"]
+
+[dependency-groups]
+dev = [
+  "black>=26.1.0",
+  "pre-commit>=4.5.1",
+  "pytest>=9.0.2",
+  "pytest-coverage>=0.0",
+  "pytest-watch>=4.2.0",
+  "ruff>=0.14.14",
+]

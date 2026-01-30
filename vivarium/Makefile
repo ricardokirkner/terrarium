@@ -1,7 +1,7 @@
 # Makefile for Vivarium
 # Development automation and common tasks
 
-.PHONY: help install lint format typecheck clean
+.PHONY: help install test test-coverage lint format typecheck clean
 
 SRC := main.py
 
@@ -33,6 +33,30 @@ lint: ## Lint code with flake8
 
 check: format lint typecheck ## Run all code quality checks
 	@echo "✅ All checks passed!"
+
+##@ Testing
+
+test: ## Run all tests
+	@echo "🧪 Running tests..."
+	uv run pytest tests/ -v
+	@echo "✅ Tests complete!"
+
+test-coverage: ## Run tests with coverage report
+	@echo "🧪 Running tests with coverage..."
+	uv run pytest tests/ --cov=$(SRC) --cov-report=html --cov-report=term
+	@echo "✅ Coverage report generated in htmlcov/"
+
+test-watch: ## Run tests in watch mode (requires pytest-watch)
+	uv run ptw tests/ -- -v
+
+test-unit: ## Run only unit tests
+	uv run pytest tests/test_*.py -v -m "not integration"
+
+test-integration: ## Run only integration tests
+	uv run pytest tests/ -v -m integration
+
+test-fast: ## Run tests without slow tests
+	uv run pytest tests/ -v -m "not slow"
 
 ##@ Cleaning
 
