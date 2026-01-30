@@ -1,4 +1,4 @@
-from core import Node, NodeStatus, Sequence
+from core import Node, NodeStatus, Selector, Sequence
 
 
 class MockNode(Node):
@@ -186,3 +186,99 @@ class TestSequence:
         result = seq.tick({})
         assert result == NodeStatus.FAILURE
         assert execution_order == ["first"]  # "third" never executed
+
+
+class TestSelector:
+    def test_empty_selector_returns_failure(self):
+        sel = Selector("empty")
+        result = sel.tick({})
+        assert result == NodeStatus.FAILURE
+
+    def test_first_child_success_returns_success(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+        ]
+        sel = Selector("sel", children)
+        result = sel.tick({})
+        assert result == NodeStatus.SUCCESS
+        assert children[0].tick_count == 1
+        assert children[1].tick_count == 0  # Early exit
+
+    def test_success_in_middle_returns_success(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.SUCCESS),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        sel = Selector("sel", children)
+        result = sel.tick({})
+        assert result == NodeStatus.SUCCESS
+        assert children[0].tick_count == 1
+        assert children[1].tick_count == 1
+        assert children[2].tick_count == 0  # Early exit
+
+    def test_all_children_fail_returns_failure(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        sel = Selector("sel", children)
+        result = sel.tick({})
+        assert result == NodeStatus.FAILURE
+        assert all(child.tick_count == 1 for child in children)
+
+    def test_running_child_returns_running(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.RUNNING),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        sel = Selector("sel", children)
+        result = sel.tick({})
+        assert result == NodeStatus.RUNNING
+        assert children[0].tick_count == 1
+        assert children[1].tick_count == 1
+        assert children[2].tick_count == 0
+
+    def test_running_child_resumes_on_next_tick(self):
+        running_node = MockNode("running", NodeStatus.RUNNING)
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            running_node,
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        sel = Selector("sel", children)
+
+        # First tick - stops at running node
+        result = sel.tick({})
+        assert result == NodeStatus.RUNNING
+        assert children[0].tick_count == 1
+        assert running_node.tick_count == 1
+
+        # Change running node to succeed
+        running_node._status = NodeStatus.SUCCESS
+
+        # Second tick - resumes from running node
+        result = sel.tick({})
+        assert result == NodeStatus.SUCCESS
+        assert children[0].tick_count == 1  # Not ticked again
+        assert running_node.tick_count == 2
+        assert children[2].tick_count == 0  # Early exit after success
+
+    def test_reset_resets_index_and_children(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.RUNNING),
+        ]
+        sel = Selector("sel", children)
+
+        # Tick to advance index
+        sel.tick({})
+        assert sel.current_index == 1
+
+        # Reset
+        sel.reset()
+        assert sel.current_index == 0
+        assert all(child._reset_called for child in children)
