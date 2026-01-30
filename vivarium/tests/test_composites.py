@@ -1,3 +1,5 @@
+import pytest
+
 from core import Node, NodeStatus, Parallel, Selector, Sequence
 
 
@@ -484,3 +486,174 @@ class TestParallel:
         par.reset()
         par.tick({})
         assert all(child.tick_count == 1 for child in children)
+
+
+@pytest.mark.integration
+class TestNestedComposites:
+    """Tests for nested composite node structures."""
+
+    def test_sequence_with_nested_selector_all_succeed(self):
+        """Sequence([Action1, Action2, Selector([Action3, Action4])]) - all succeed."""
+        execution_order: list[str] = []
+
+        action1 = OrderTrackingNode("action1", execution_order)
+        action2 = OrderTrackingNode("action2", execution_order)
+        action3 = OrderTrackingNode("action3", execution_order)
+        action4 = OrderTrackingNode("action4", execution_order)
+
+        tree: Node = Sequence(
+            "root",
+            [
+                action1,
+                action2,
+                Selector("selector", [action3, action4]),
+            ],
+        )
+
+        result = tree.tick({})
+
+        assert result == NodeStatus.SUCCESS
+        # Sequence executes action1, action2, then selector
+        # Selector tries action3 which succeeds, so action4 is never tried
+        assert execution_order == ["action1", "action2", "action3"]
+
+    def test_sequence_with_nested_selector_first_action_fails(self):
+        """Sequence fails early if first action fails."""
+        action1 = MockNode("action1", NodeStatus.FAILURE)
+        action2 = MockNode("action2", NodeStatus.SUCCESS)
+        action3 = MockNode("action3", NodeStatus.SUCCESS)
+        action4 = MockNode("action4", NodeStatus.SUCCESS)
+
+        tree: Node = Sequence(
+            "root",
+            [
+                action1,
+                action2,
+                Selector("selector", [action3, action4]),
+            ],
+        )
+
+        result = tree.tick({})
+
+        assert result == NodeStatus.FAILURE
+        assert action1.tick_count == 1
+        assert action2.tick_count == 0  # Never reached
+        assert action3.tick_count == 0  # Never reached
+        assert action4.tick_count == 0  # Never reached
+
+    def test_sequence_with_nested_selector_selector_tries_fallback(self):
+        """Selector tries fallback when first option fails."""
+        execution_order: list[str] = []
+
+        action1 = OrderTrackingNode("action1", execution_order)
+        action2 = OrderTrackingNode("action2", execution_order)
+        action3 = MockNode("action3", NodeStatus.FAILURE)
+        action4 = OrderTrackingNode("action4", execution_order)
+
+        tree: Node = Sequence(
+            "root",
+            [
+                action1,
+                action2,
+                Selector("selector", [action3, action4]),
+            ],
+        )
+
+        result = tree.tick({})
+
+        assert result == NodeStatus.SUCCESS
+        # action3 fails, so selector tries action4 which succeeds
+        assert execution_order == ["action1", "action2", "action4"]
+        assert action3.tick_count == 1
+
+    def test_sequence_with_nested_selector_all_selector_children_fail(self):
+        """Sequence fails when all selector children fail."""
+        action1 = MockNode("action1", NodeStatus.SUCCESS)
+        action2 = MockNode("action2", NodeStatus.SUCCESS)
+        action3 = MockNode("action3", NodeStatus.FAILURE)
+        action4 = MockNode("action4", NodeStatus.FAILURE)
+
+        tree: Node = Sequence(
+            "root",
+            [
+                action1,
+                action2,
+                Selector("selector", [action3, action4]),
+            ],
+        )
+
+        result = tree.tick({})
+
+        assert result == NodeStatus.FAILURE
+        assert action1.tick_count == 1
+        assert action2.tick_count == 1
+        assert action3.tick_count == 1
+        assert action4.tick_count == 1
+
+    def test_sequence_with_nested_selector_running_in_selector(self):
+        """Sequence returns RUNNING when selector child is RUNNING."""
+        action1 = MockNode("action1", NodeStatus.SUCCESS)
+        action2 = MockNode("action2", NodeStatus.SUCCESS)
+        action3 = MockNode("action3", NodeStatus.RUNNING)
+        action4 = MockNode("action4", NodeStatus.SUCCESS)
+
+        tree: Node = Sequence(
+            "root",
+            [
+                action1,
+                action2,
+                Selector("selector", [action3, action4]),
+            ],
+        )
+
+        result = tree.tick({})
+
+        assert result == NodeStatus.RUNNING
+        assert action3.tick_count == 1
+        assert action4.tick_count == 0  # Not tried yet
+
+    def test_sequence_with_nested_selector_resumes_after_running(self):
+        """Sequence resumes from RUNNING selector child."""
+        action1 = MockNode("action1", NodeStatus.SUCCESS)
+        action2 = MockNode("action2", NodeStatus.SUCCESS)
+        action3 = MockNode("action3", NodeStatus.RUNNING)
+        action4 = MockNode("action4", NodeStatus.SUCCESS)
+
+        selector = Selector("selector", [action3, action4])
+        tree: Node = Sequence("root", [action1, action2, selector])
+
+        # First tick - stops at running action3
+        result = tree.tick({})
+        assert result == NodeStatus.RUNNING
+        assert action1.tick_count == 1
+        assert action2.tick_count == 1
+        assert action3.tick_count == 1
+
+        # action3 now succeeds
+        action3._status = NodeStatus.SUCCESS
+
+        # Second tick - resumes from selector (which resumes from action3)
+        result = tree.tick({})
+        assert result == NodeStatus.SUCCESS
+        assert action1.tick_count == 1  # Not re-ticked (sequence resumed at selector)
+        assert action2.tick_count == 1  # Not re-ticked
+        assert action3.tick_count == 2  # Re-ticked and succeeds
+        assert action4.tick_count == 0  # Not needed since action3 succeeded
+
+    def test_reset_propagates_through_nested_structure(self):
+        """Reset propagates through all nested nodes."""
+        action1 = MockNode("action1", NodeStatus.SUCCESS)
+        action2 = MockNode("action2", NodeStatus.SUCCESS)
+        action3 = MockNode("action3", NodeStatus.SUCCESS)
+        action4 = MockNode("action4", NodeStatus.SUCCESS)
+
+        selector = Selector("selector", [action3, action4])
+        tree = Sequence("root", [action1, action2, selector])
+
+        tree.tick({})
+        tree.reset()
+
+        assert action1._reset_called
+        assert action2._reset_called
+        assert action3._reset_called
+        assert action4._reset_called
