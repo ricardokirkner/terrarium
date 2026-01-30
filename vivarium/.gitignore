@@ -1,0 +1,5 @@
+.venv/
+uv.lock              # *should* be committed; ignore only if intentionally ephemeral
+# bytecode, caches
+__pycache__/
+*.pyc
