@@ -1,6 +1,6 @@
 import pytest
 
-from node import Node, NodeStatus
+from core import Node, NodeStatus
 
 
 class ConcreteSuccessNode(Node):
