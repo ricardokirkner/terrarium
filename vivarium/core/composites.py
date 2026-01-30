@@ -111,3 +111,99 @@ class Selector(Node):
         self.current_index = 0
         for child in self.children:
             child.reset()
+
+
+class Parallel(Node):
+    """A composite node that executes all children simultaneously.
+
+    The Parallel node ticks all its children on every tick. It uses thresholds
+    to determine success or failure based on how many children succeed or fail.
+
+    Attributes:
+        name: A unique identifier for this node.
+        children: List of child nodes to execute in parallel.
+        success_threshold: Number of children that must succeed for this node
+            to succeed. If None, all children must succeed.
+        failure_threshold: Number of children that must fail for this node
+            to fail. If None, all children must fail.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        children: list[Node] | None = None,
+        success_threshold: int | None = None,
+        failure_threshold: int | None = None,
+    ):
+        """Initialize the Parallel node.
+
+        Args:
+            name: A unique identifier for this node.
+            children: Optional list of child nodes to execute in parallel.
+            success_threshold: Number of children that must succeed for SUCCESS.
+                Defaults to all children (None).
+            failure_threshold: Number of children that must fail for FAILURE.
+                Defaults to all children (None).
+        """
+        self.name = name
+        self.children: list[Node] = children if children is not None else []
+        self.success_threshold = success_threshold
+        self.failure_threshold = failure_threshold
+
+    def tick(self, state) -> NodeStatus:
+        """Execute all children and evaluate based on thresholds.
+
+        Args:
+            state: The current state of the behavior tree.
+
+        Returns:
+            SUCCESS if success_threshold children succeed.
+            FAILURE if failure_threshold children fail.
+            RUNNING if thresholds are not yet met and children are still running.
+        """
+        if not self.children:
+            return NodeStatus.SUCCESS
+
+        success_count = 0
+        failure_count = 0
+        running_count = 0
+
+        for child in self.children:
+            status = child.tick(state)
+            if status == NodeStatus.SUCCESS:
+                success_count += 1
+            elif status == NodeStatus.FAILURE:
+                failure_count += 1
+            elif status == NodeStatus.RUNNING:
+                running_count += 1
+
+        # Determine effective thresholds
+        effective_success_threshold = (
+            self.success_threshold
+            if self.success_threshold is not None
+            else len(self.children)
+        )
+        effective_failure_threshold = (
+            self.failure_threshold
+            if self.failure_threshold is not None
+            else len(self.children)
+        )
+
+        # Check thresholds
+        if success_count >= effective_success_threshold:
+            return NodeStatus.SUCCESS
+        if failure_count >= effective_failure_threshold:
+            return NodeStatus.FAILURE
+
+        # If any children are still running, we're running
+        if running_count > 0:
+            return NodeStatus.RUNNING
+
+        # All children finished but thresholds not met
+        # Default to failure if success threshold not reached
+        return NodeStatus.FAILURE
+
+    def reset(self):
+        """Reset this node and all children to their initial state."""
+        for child in self.children:
+            child.reset()

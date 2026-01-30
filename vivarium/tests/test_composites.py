@@ -1,4 +1,4 @@
-from core import Node, NodeStatus, Selector, Sequence
+from core import Node, NodeStatus, Parallel, Selector, Sequence
 
 
 class MockNode(Node):
@@ -282,3 +282,205 @@ class TestSelector:
         sel.reset()
         assert sel.current_index == 0
         assert all(child._reset_called for child in children)
+
+
+class TestParallel:
+    # Basic behavior tests
+    def test_empty_parallel_returns_success(self):
+        par = Parallel("empty")
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_all_children_ticked_on_each_tick(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.SUCCESS),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children)
+        par.tick({})
+        assert all(child.tick_count == 1 for child in children)
+
+        # Tick again - all children should be ticked again
+        par.tick({})
+        assert all(child.tick_count == 2 for child in children)
+
+    # Default threshold tests (all must succeed/fail)
+    def test_all_succeed_returns_success_default(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.SUCCESS),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_one_failure_prevents_success_default(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    def test_all_fail_returns_failure_default(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    # Success threshold tests
+    def test_success_threshold_1_with_one_success(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.SUCCESS),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, success_threshold=1)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_success_threshold_2_with_two_successes(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children, success_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_success_threshold_not_met_returns_failure(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, success_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    # Failure threshold tests
+    def test_failure_threshold_1_with_one_failure(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children, failure_threshold=1)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    def test_failure_threshold_2_with_two_failures(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.SUCCESS),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, failure_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    def test_failure_threshold_not_met_with_success_threshold_met(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children, success_threshold=2, failure_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    # RUNNING tests
+    def test_running_child_returns_running(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.RUNNING),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children)
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING
+
+    def test_running_with_success_threshold_met_returns_success(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.RUNNING),
+            MockNode("child3", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children, success_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_running_with_failure_threshold_met_returns_failure(self):
+        children = [
+            MockNode("child1", NodeStatus.FAILURE),
+            MockNode("child2", NodeStatus.RUNNING),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, failure_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.FAILURE
+
+    def test_running_when_thresholds_not_met(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.RUNNING),
+            MockNode("child3", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, success_threshold=2, failure_threshold=2)
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING
+
+    # Mixed success/failure/running tests
+    def test_mixed_states_all_children_ticked(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+            MockNode("child3", NodeStatus.RUNNING),
+        ]
+        par = Parallel("par", children, success_threshold=2, failure_threshold=2)
+        par.tick({})
+        assert all(child.tick_count == 1 for child in children)
+
+    def test_success_threshold_checked_before_failure(self):
+        # When both thresholds could be met, success is checked first
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children, success_threshold=1, failure_threshold=1)
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    # Reset tests
+    def test_reset_resets_all_children(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.FAILURE),
+        ]
+        par = Parallel("par", children)
+        par.tick({})
+        par.reset()
+        assert all(child._reset_called for child in children)
+
+    def test_reset_allows_re_execution(self):
+        children = [
+            MockNode("child1", NodeStatus.SUCCESS),
+            MockNode("child2", NodeStatus.SUCCESS),
+        ]
+        par = Parallel("par", children)
+
+        par.tick({})
+        assert all(child.tick_count == 1 for child in children)
+
+        par.reset()
+        par.tick({})
+        assert all(child.tick_count == 1 for child in children)
