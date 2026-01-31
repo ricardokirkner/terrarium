@@ -4,7 +4,7 @@ The BehaviorTree class provides a container for behavior tree execution,
 wrapping the root node and providing tick counting and state management.
 """
 
-from core.node import Node, NodeStatus
+from .node import Node, NodeStatus
 
 
 class BehaviorTree:

@@ -1,9 +1,9 @@
-from core.actions import Action
-from core.composites import Parallel, Selector, Sequence
-from core.conditions import Condition
-from core.node import Node, NodeStatus
-from core.state import State
-from core.tree import BehaviorTree
+from .actions import Action
+from .composites import Parallel, Selector, Sequence
+from .conditions import Condition
+from .node import Node, NodeStatus
+from .state import State
+from .tree import BehaviorTree
 
 __all__ = [
     "Action",

@@ -16,7 +16,7 @@ either SUCCESS (condition is true) or FAILURE (condition is false).
 
 from abc import abstractmethod
 
-from core.node import Node, NodeStatus
+from .node import Node, NodeStatus
 
 
 class Condition(Node):

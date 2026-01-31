@@ -1,4 +1,4 @@
-from core.node import Node, NodeStatus
+from .node import Node, NodeStatus
 
 
 class Sequence(Node):

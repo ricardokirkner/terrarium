@@ -16,7 +16,7 @@ serve different purposes in the behavior tree structure.
 
 from abc import abstractmethod
 
-from core.node import Node, NodeStatus
+from .node import Node, NodeStatus
 
 
 class Action(Node):
