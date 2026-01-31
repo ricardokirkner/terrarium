@@ -1,6 +1,6 @@
 import pytest
 
-from core import Action, Condition, NodeStatus, Sequence
+from core import Action, Condition, NodeStatus, Selector, Sequence
 
 
 class AlwaysTrueCondition(Condition):
@@ -205,3 +205,126 @@ class IncrementAction(Action):
     def execute(self, state) -> NodeStatus:
         state[self.key] = state.get(self.key, 0) + 1
         return NodeStatus.SUCCESS
+
+
+@pytest.mark.integration
+class TestActionsAndConditionsIntegration:
+    """Integration tests for behavior trees with actions and conditions."""
+
+    def test_sequence_with_condition_guard(self):
+        """Sequence that only executes action if condition passes."""
+        condition = ValueCheckCondition("has_health", "health", 0)
+        action = SetValueAction("attack", "attacked", True)
+
+        tree = Sequence("guarded_attack", [condition, action])
+
+        # With health > 0, both condition and action succeed
+        state = {"health": 50}
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["attacked"] is True
+
+    def test_sequence_with_failing_condition_guard(self):
+        """Sequence stops if condition fails."""
+        condition = ValueCheckCondition("has_health", "health", 0)
+        action = SetValueAction("attack", "attacked", True)
+
+        tree = Sequence("guarded_attack", [condition, action])
+
+        # With health = 0, condition fails and action never runs
+        state = {"health": 0}
+        result = tree.tick(state)
+        assert result == NodeStatus.FAILURE
+        assert "attacked" not in state
+
+    def test_selector_with_condition_fallback(self):
+        """Selector tries fallback when condition fails."""
+        primary_condition = HasKeyCondition("has_target", "target")
+        primary_action = SetValueAction("attack", "action", "attack")
+        fallback_action = SetValueAction("patrol", "action", "patrol")
+
+        tree = Selector(
+            "combat_or_patrol",
+            [
+                Sequence("attack_sequence", [primary_condition, primary_action]),
+                fallback_action,
+            ],
+        )
+
+        # With target, attacks
+        state = {"target": "enemy"}
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["action"] == "attack"
+
+        # Without target, patrols
+        state = {}
+        tree.reset()
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["action"] == "patrol"
+
+    def test_complex_tree_with_multiple_conditions(self):
+        """Complex tree with multiple conditions and actions."""
+        # If has health AND has target -> attack
+        # Else if has health -> patrol
+        # Else -> rest
+
+        has_health = ValueCheckCondition("has_health", "health", 0)
+        has_target = HasKeyCondition("has_target", "target")
+        attack = SetValueAction("attack", "action", "attack")
+        patrol = SetValueAction("patrol", "action", "patrol")
+        rest = SetValueAction("rest", "action", "rest")
+
+        tree = Selector(
+            "ai",
+            [
+                Sequence("attack_branch", [has_health, has_target, attack]),
+                Sequence(
+                    "patrol_branch",
+                    [ValueCheckCondition("has_health2", "health", 0), patrol],
+                ),
+                rest,
+            ],
+        )
+
+        # Has health and target -> attack
+        state = {"health": 50, "target": "enemy"}
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["action"] == "attack"
+
+        # Has health but no target -> patrol
+        tree.reset()
+        state = {"health": 50}
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["action"] == "patrol"
+
+        # No health -> rest
+        tree.reset()
+        state = {"health": 0}
+        result = tree.tick(state)
+        assert result == NodeStatus.SUCCESS
+        assert state["action"] == "rest"
+
+    def test_condition_does_not_modify_state(self):
+        """Verify that conditions don't modify state."""
+        condition = ValueCheckCondition("check", "value", 10)
+        state = {"value": 15}
+        state_copy = state.copy()
+
+        condition.tick(state)
+
+        assert state == state_copy
+
+    def test_action_modifies_state(self):
+        """Verify that actions can modify state."""
+        action = IncrementAction("increment", "counter")
+        state = {"counter": 0}
+
+        action.tick(state)
+        assert state["counter"] == 1
+
+        action.tick(state)
+        assert state["counter"] == 2
