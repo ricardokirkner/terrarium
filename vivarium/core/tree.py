@@ -43,10 +43,10 @@ class BehaviorTree:
         return self.root.tick(state)
 
     def reset(self) -> None:
-        """Reset the behavior tree.
+        """Reset the behavior tree traversal state.
 
-        Resets the tick count and calls reset on the root node,
-        which propagates to all children.
+        Calls reset on the root node, which propagates to all children.
+        This resets internal state like current_index in Sequence/Selector
+        nodes, but preserves the tick_count.
         """
-        self.tick_count = 0
         self.root.reset()

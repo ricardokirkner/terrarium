@@ -9,6 +9,9 @@ class Sequence(Node):
     immediately fails. If a child returns RUNNING, the sequence returns RUNNING
     and will resume from that child on the next tick.
 
+    Note on empty Sequence: Returns SUCCESS (vacuously true - all zero children
+    succeeded).
+
     Attributes:
         name: A unique identifier for this node.
         children: List of child nodes to execute in order.
@@ -36,6 +39,9 @@ class Sequence(Node):
             FAILURE if any child fails.
             RUNNING if a child is still running.
             SUCCESS if all children succeed.
+
+        Raises:
+            ValueError: If a child returns IDLE (invalid during execution).
         """
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
@@ -47,6 +53,12 @@ class Sequence(Node):
                 return NodeStatus.RUNNING
             elif status == NodeStatus.SUCCESS:
                 self.current_index += 1
+            else:
+                child_name = getattr(child, "name", type(child).__name__)
+                raise ValueError(
+                    f"Node '{child_name}' returned unexpected status {status}. "
+                    f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
+                )
 
         return NodeStatus.SUCCESS
 
@@ -64,6 +76,8 @@ class Selector(Node):
     FAILURE, it moves to the next child. If a child returns SUCCESS, the selector
     immediately succeeds. If a child returns RUNNING, the selector returns RUNNING
     and will resume from that child on the next tick.
+
+    Note on empty Selector: Returns FAILURE (no child succeeded).
 
     Attributes:
         name: A unique identifier for this node.
@@ -92,6 +106,9 @@ class Selector(Node):
             SUCCESS if any child succeeds.
             RUNNING if a child is still running.
             FAILURE if all children fail.
+
+        Raises:
+            ValueError: If a child returns IDLE (invalid during execution).
         """
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
@@ -103,6 +120,12 @@ class Selector(Node):
                 return NodeStatus.RUNNING
             elif status == NodeStatus.FAILURE:
                 self.current_index += 1
+            else:
+                child_name = getattr(child, "name", type(child).__name__)
+                raise ValueError(
+                    f"Node '{child_name}' returned unexpected status {status}. "
+                    f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
+                )
 
         return NodeStatus.FAILURE
 
@@ -116,8 +139,16 @@ class Selector(Node):
 class Parallel(Node):
     """A composite node that executes all children simultaneously.
 
-    The Parallel node ticks all its children on every tick. It uses thresholds
-    to determine success or failure based on how many children succeed or fail.
+    The Parallel node ticks all its children on every tick until they complete.
+    Once a child returns SUCCESS or FAILURE, it is not ticked again until the
+    Parallel node is reset. This prevents side effects from being executed
+    multiple times.
+
+    It uses thresholds to determine success or failure based on how many
+    children succeed or fail.
+
+    Note on empty Parallel: Returns SUCCESS (vacuously true - all zero children
+    succeeded).
 
     Attributes:
         name: A unique identifier for this node.
@@ -149,9 +180,72 @@ class Parallel(Node):
         self.children: list[Node] = children if children is not None else []
         self.success_threshold = success_threshold
         self.failure_threshold = failure_threshold
+        self._child_statuses: list[NodeStatus | None] = [None] * len(self.children)
+
+    def _ensure_status_list_size(self):
+        """Ensure _child_statuses matches children length for dynamic children."""
+        while len(self._child_statuses) < len(self.children):
+            self._child_statuses.append(None)
+
+    def _tick_child(self, index: int, child: Node, state) -> NodeStatus:
+        """Tick a child if not already completed, updating cached status.
+
+        Args:
+            index: Index of the child in the children list.
+            child: The child node to tick.
+            state: The current state of the behavior tree.
+
+        Returns:
+            The child's status (cached if already completed).
+
+        Raises:
+            ValueError: If the child returns IDLE.
+        """
+        cached = self._child_statuses[index]
+        if cached in (NodeStatus.SUCCESS, NodeStatus.FAILURE):
+            return cached  # type: ignore[return-value]
+
+        status = child.tick(state)
+        self._child_statuses[index] = status
+
+        if status == NodeStatus.IDLE:
+            child_name = getattr(child, "name", type(child).__name__)
+            raise ValueError(
+                f"Node '{child_name}' returned unexpected status {status}. "
+                f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
+            )
+        return status
+
+    def _evaluate_thresholds(
+        self, success_count: int, failure_count: int, running_count: int
+    ) -> NodeStatus:
+        """Evaluate counts against thresholds to determine result.
+
+        Args:
+            success_count: Number of children that succeeded.
+            failure_count: Number of children that failed.
+            running_count: Number of children still running.
+
+        Returns:
+            The resulting status based on threshold evaluation.
+        """
+        effective_success = self.success_threshold or len(self.children)
+        effective_failure = self.failure_threshold or len(self.children)
+
+        if success_count >= effective_success:
+            return NodeStatus.SUCCESS
+        if failure_count >= effective_failure:
+            return NodeStatus.FAILURE
+        if running_count > 0:
+            return NodeStatus.RUNNING
+        return NodeStatus.FAILURE
 
     def tick(self, state) -> NodeStatus:
         """Execute all children and evaluate based on thresholds.
+
+        Children that have already completed (returned SUCCESS or FAILURE) are
+        not ticked again. This prevents actions with side effects from being
+        executed multiple times.
 
         Args:
             state: The current state of the behavior tree.
@@ -160,50 +254,32 @@ class Parallel(Node):
             SUCCESS if success_threshold children succeed.
             FAILURE if failure_threshold children fail.
             RUNNING if thresholds are not yet met and children are still running.
+
+        Raises:
+            ValueError: If a child returns IDLE (invalid during execution).
         """
         if not self.children:
             return NodeStatus.SUCCESS
+
+        self._ensure_status_list_size()
 
         success_count = 0
         failure_count = 0
         running_count = 0
 
-        for child in self.children:
-            status = child.tick(state)
+        for i, child in enumerate(self.children):
+            status = self._tick_child(i, child, state)
             if status == NodeStatus.SUCCESS:
                 success_count += 1
             elif status == NodeStatus.FAILURE:
                 failure_count += 1
-            elif status == NodeStatus.RUNNING:
+            else:
                 running_count += 1
 
-        # Determine effective thresholds
-        effective_success_threshold = (
-            self.success_threshold
-            if self.success_threshold is not None
-            else len(self.children)
-        )
-        effective_failure_threshold = (
-            self.failure_threshold
-            if self.failure_threshold is not None
-            else len(self.children)
-        )
-
-        # Check thresholds
-        if success_count >= effective_success_threshold:
-            return NodeStatus.SUCCESS
-        if failure_count >= effective_failure_threshold:
-            return NodeStatus.FAILURE
-
-        # If any children are still running, we're running
-        if running_count > 0:
-            return NodeStatus.RUNNING
-
-        # All children finished but thresholds not met
-        # Default to failure if success threshold not reached
-        return NodeStatus.FAILURE
+        return self._evaluate_thresholds(success_count, failure_count, running_count)
 
     def reset(self):
         """Reset this node and all children to their initial state."""
+        self._child_statuses = [None] * len(self.children)
         for child in self.children:
             child.reset()

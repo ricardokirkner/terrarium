@@ -174,7 +174,7 @@ class TestSequence:
         seq.reset()
         result = seq.tick({})
         assert result == NodeStatus.SUCCESS
-        # tick_count is reset to 0 by reset(), then incremented to 1
+        # MockNode.tick_count is reset to 0 by MockNode.reset(), then incremented to 1
         assert all(child.tick_count == 1 for child in children)
 
     def test_failure_does_not_execute_remaining_children(self):
@@ -188,6 +188,35 @@ class TestSequence:
         result = seq.tick({})
         assert result == NodeStatus.FAILURE
         assert execution_order == ["first"]  # "third" never executed
+
+    def test_idle_child_raises_value_error(self):
+        """A child returning IDLE during tick should raise ValueError."""
+        idle_node = MockNode("idle_child", NodeStatus.IDLE)
+        seq = Sequence("seq", [idle_node])
+        with pytest.raises(ValueError) as exc_info:
+            seq.tick({})
+        assert "idle_child" in str(exc_info.value)
+        assert "IDLE" in str(exc_info.value)
+
+    def test_idle_child_without_name_uses_class_name(self):
+        """A child without name attribute returning IDLE uses class name in error."""
+
+        class NamelessNode(Node):
+            def __init__(self):
+                # Intentionally don't set self.name
+                pass
+
+            def tick(self, state) -> NodeStatus:
+                return NodeStatus.IDLE
+
+            def reset(self):
+                pass
+
+        nameless: Node = NamelessNode()
+        seq = Sequence("seq", [nameless])
+        with pytest.raises(ValueError) as exc_info:
+            seq.tick({})
+        assert "NamelessNode" in str(exc_info.value)
 
 
 class TestSelector:
@@ -285,6 +314,35 @@ class TestSelector:
         assert sel.current_index == 0
         assert all(child._reset_called for child in children)
 
+    def test_idle_child_raises_value_error(self):
+        """A child returning IDLE during tick should raise ValueError."""
+        idle_node = MockNode("idle_child", NodeStatus.IDLE)
+        sel = Selector("sel", [idle_node])
+        with pytest.raises(ValueError) as exc_info:
+            sel.tick({})
+        assert "idle_child" in str(exc_info.value)
+        assert "IDLE" in str(exc_info.value)
+
+    def test_idle_child_without_name_uses_class_name(self):
+        """A child without name attribute returning IDLE uses class name in error."""
+
+        class NamelessNode(Node):
+            def __init__(self):
+                # Intentionally don't set self.name
+                pass
+
+            def tick(self, state) -> NodeStatus:
+                return NodeStatus.IDLE
+
+            def reset(self):
+                pass
+
+        nameless: Node = NamelessNode()
+        sel = Selector("sel", [nameless])
+        with pytest.raises(ValueError) as exc_info:
+            sel.tick({})
+        assert "NamelessNode" in str(exc_info.value)
+
 
 class TestParallel:
     # Basic behavior tests
@@ -293,7 +351,12 @@ class TestParallel:
         result = par.tick({})
         assert result == NodeStatus.SUCCESS
 
-    def test_all_children_ticked_on_each_tick(self):
+    def test_completed_children_not_reticked(self):
+        """Children that complete (SUCCESS/FAILURE) should not be ticked again.
+
+        This prevents side effects from being executed multiple times when
+        some children take longer than others.
+        """
         children = [
             MockNode("child1", NodeStatus.SUCCESS),
             MockNode("child2", NodeStatus.SUCCESS),
@@ -303,9 +366,50 @@ class TestParallel:
         par.tick({})
         assert all(child.tick_count == 1 for child in children)
 
-        # Tick again - all children should be ticked again
+        # Tick again - completed children should NOT be ticked again
         par.tick({})
-        assert all(child.tick_count == 2 for child in children)
+        assert all(child.tick_count == 1 for child in children)
+
+    def test_running_children_continue_to_be_ticked(self):
+        """Children that return RUNNING should continue to be ticked."""
+
+        class CountingRunningNode(Node):
+            def __init__(self, name: str, ticks_until_done: int):
+                self.name = name
+                self.ticks_until_done = ticks_until_done
+                self.tick_count = 0
+
+            def tick(self, state) -> NodeStatus:
+                self.tick_count += 1
+                if self.tick_count >= self.ticks_until_done:
+                    return NodeStatus.SUCCESS
+                return NodeStatus.RUNNING
+
+            def reset(self):
+                self.tick_count = 0
+
+        fast = CountingRunningNode("fast", 1)  # Completes immediately
+        slow = CountingRunningNode("slow", 3)  # Takes 3 ticks
+
+        par = Parallel("par", [fast, slow])
+
+        # Tick 1: fast completes, slow is running
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING
+        assert fast.tick_count == 1
+        assert slow.tick_count == 1
+
+        # Tick 2: fast should NOT be ticked again, slow continues
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING
+        assert fast.tick_count == 1  # Not ticked again
+        assert slow.tick_count == 2
+
+        # Tick 3: slow completes
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+        assert fast.tick_count == 1  # Still not ticked again
+        assert slow.tick_count == 3
 
     # Default threshold tests (all must succeed/fail)
     def test_all_succeed_returns_success_default(self):
@@ -486,6 +590,62 @@ class TestParallel:
         par.reset()
         par.tick({})
         assert all(child.tick_count == 1 for child in children)
+
+    def test_dynamically_added_children_are_handled(self):
+        """Children added after construction are properly tracked."""
+        child1 = MockNode("child1", NodeStatus.RUNNING)
+        par = Parallel("par", [child1])
+
+        # First tick - only child1 exists
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING
+        assert child1.tick_count == 1
+
+        # Dynamically add a new child
+        child2 = MockNode("child2", NodeStatus.SUCCESS)
+        par.children.append(child2)
+
+        # Second tick - both children should be processed
+        result = par.tick({})
+        assert result == NodeStatus.RUNNING  # child1 still running
+        assert child1.tick_count == 2
+        assert child2.tick_count == 1
+
+        # child1 now succeeds
+        child1._status = NodeStatus.SUCCESS
+
+        # Third tick - both succeed
+        result = par.tick({})
+        assert result == NodeStatus.SUCCESS
+
+    def test_idle_child_raises_value_error(self):
+        """A child returning IDLE during tick should raise ValueError."""
+        idle_node = MockNode("idle_child", NodeStatus.IDLE)
+        par = Parallel("par", [idle_node])
+        with pytest.raises(ValueError) as exc_info:
+            par.tick({})
+        assert "idle_child" in str(exc_info.value)
+        assert "IDLE" in str(exc_info.value)
+
+    def test_idle_child_without_name_uses_class_name(self):
+        """A child without name attribute returning IDLE uses class name in error."""
+
+        class NamelessNode(Node):
+            def __init__(self):
+                # Intentionally don't set self.name
+                pass
+
+            def tick(self, state) -> NodeStatus:
+                return NodeStatus.IDLE
+
+            def reset(self):
+                pass
+
+        nameless: Node = NamelessNode()
+        par = Parallel("par", [nameless])
+        with pytest.raises(ValueError) as exc_info:
+            par.tick({})
+        assert "NamelessNode" in str(exc_info.value)
 
 
 @pytest.mark.integration

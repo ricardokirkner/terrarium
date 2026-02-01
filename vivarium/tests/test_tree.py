@@ -218,14 +218,14 @@ class TestBehaviorTreeMultipleTicks:
 class TestBehaviorTreeReset:
     """Test reset functionality."""
 
-    def test_reset_clears_tick_count(self):
+    def test_reset_preserves_tick_count(self):
         tree = BehaviorTree(SuccessAction("root"))
         tree.tick({})
         tree.tick({})
         assert tree.tick_count == 2
 
         tree.reset()
-        assert tree.tick_count == 0
+        assert tree.tick_count == 2  # tick_count is preserved across reset
 
     def test_reset_resets_root_node(self):
         seq = Sequence(
@@ -307,8 +307,8 @@ class TestBehaviorTreeIntegration:
             tree.tick(state)
             tree.reset()
 
-        assert tree.tick_count == 0  # Reset clears it
-        assert state.get("ticks") == 5  # But state persists
+        assert tree.tick_count == 5  # tick_count preserved across resets
+        assert state.get("ticks") == 5  # State also persists
 
     def test_complex_tree_with_multiple_levels(self):
         """Test a complex tree structure."""

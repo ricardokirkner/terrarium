@@ -78,7 +78,7 @@ class HealAction(Action):
         state["last_action"] = "heal"
         print(
             f"  [{self.name}] Healed {new_health - old_health} "
-            "HP: {old_health} -> {new_health}"
+            f"HP: {old_health} -> {new_health}"
         )
         return NodeStatus.SUCCESS
 
