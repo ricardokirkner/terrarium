@@ -26,11 +26,6 @@ Options:
 
 import argparse
 import random
-import sys
-from pathlib import Path
-
-# Add parent directory to path so we can import vivarium
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from vivarium.core import (
     Action,
@@ -76,6 +71,7 @@ class HealAction(Action):
         new_health = min(100, old_health + self.amount)  # Cap at 100
         state["health"] = new_health
         state["last_action"] = "heal"
+        state["heal_count"] = state.get("heal_count", 0) + 1
         print(
             f"  [{self.name}] Healed {new_health - old_health} "
             f"HP: {old_health} -> {new_health}"
@@ -112,6 +108,7 @@ class AttackAction(Action):
 
         state["health"] = new_health
         state["last_action"] = "attack"
+        state["attack_count"] = state.get("attack_count", 0) + 1
 
         print(
             f"  [{self.name}] Attacked for {self.damage_dealt} damage, "
@@ -287,9 +284,6 @@ def main():
         print("=" * 60)
         print(f"Tick {tick} (tree tick_count: {tree.tick_count})")
         print("=" * 60)
-
-        # Reset tree for clean execution each tick
-        tree.reset()
 
         print("Executing tree:")
         result = tree.tick(state)
