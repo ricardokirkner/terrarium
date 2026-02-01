@@ -48,6 +48,7 @@ class Sequence(Node):
             status = child.tick(state)
 
             if status == NodeStatus.FAILURE:
+                self.current_index = 0
                 return NodeStatus.FAILURE
             elif status == NodeStatus.RUNNING:
                 return NodeStatus.RUNNING
@@ -60,6 +61,7 @@ class Sequence(Node):
                     f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
                 )
 
+        self.current_index = 0
         return NodeStatus.SUCCESS
 
     def reset(self):
@@ -115,6 +117,7 @@ class Selector(Node):
             status = child.tick(state)
 
             if status == NodeStatus.SUCCESS:
+                self.current_index = 0
                 return NodeStatus.SUCCESS
             elif status == NodeStatus.RUNNING:
                 return NodeStatus.RUNNING
@@ -127,6 +130,7 @@ class Selector(Node):
                     f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
                 )
 
+        self.current_index = 0
         return NodeStatus.FAILURE
 
     def reset(self):

@@ -204,15 +204,14 @@ class TestBehaviorTreeMultipleTicks:
         tree.tick(state)
         assert state["counter"] == 2
 
-        # Second tick without reset - sequence already completed
-        # Sequence's current_index is at the end, so it returns SUCCESS immediately
+        # Second tick - sequence auto-resets after completion, runs again
         tree.tick(state)
-        assert state["counter"] == 2  # No change, sequence already done
+        assert state["counter"] == 4  # Runs again from start
 
-        # Reset and run again
+        # Explicit reset has same effect (already at start)
         tree.reset()
         tree.tick(state)
-        assert state["counter"] == 4
+        assert state["counter"] == 6
 
 
 class TestBehaviorTreeReset:
@@ -228,17 +227,18 @@ class TestBehaviorTreeReset:
         assert tree.tick_count == 2  # tick_count is preserved across reset
 
     def test_reset_resets_root_node(self):
+        """Reset clears any partial progress (e.g., from RUNNING children)."""
         seq = Sequence(
             "root",
             [
                 SuccessAction("a1"),
-                SuccessAction("a2"),
+                RunningAction("a2"),  # Returns RUNNING, so sequence doesn't complete
             ],
         )
         tree = BehaviorTree(seq)
 
         tree.tick({})
-        assert seq.current_index == 2  # Sequence completed
+        assert seq.current_index == 1  # Paused at second child
 
         tree.reset()
         assert seq.current_index == 0  # Reset back to start

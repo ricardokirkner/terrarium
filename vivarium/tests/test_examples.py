@@ -104,7 +104,6 @@ class TestCombatAIExample:
 
         ticks = 0
         while state.get("enemy_health", 0) > 0 and state.get("health", 0) > 0:
-            tree.reset()
             tree.tick(state)
             ticks += 1
             if ticks > 100:
@@ -126,7 +125,6 @@ class TestCombatAIExample:
 
         ticks = 0
         while state.get("enemy_health", 0) > 0 and state.get("health", 0) > 0:
-            tree.reset()
             tree.tick(state)
             ticks += 1
             if ticks > 100:
@@ -150,7 +148,6 @@ class TestCombatAIExample:
 
         ticks = 0
         while state.get("enemy_health", 0) > 0 and state.get("health", 0) > 0:
-            tree.reset()
             tree.tick(state)
             ticks += 1
             if ticks > 100:
@@ -176,7 +173,6 @@ class TestCombatAIExample:
 
         ticks = 0
         while state.get("enemy_health", 0) > 0:
-            tree.reset()
             tree.tick(state)
             ticks += 1
             if ticks > 100:
