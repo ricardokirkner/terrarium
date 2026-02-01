@@ -1,6 +1,15 @@
 from .node import Node, NodeStatus
 
 
+def _raise_idle_error(child: Node) -> None:
+    """Raise ValueError for a child that returned IDLE."""
+    child_name = getattr(child, "name", type(child).__name__)
+    raise ValueError(
+        f"Node '{child_name}' returned unexpected status {NodeStatus.IDLE}. "
+        f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
+    )
+
+
 class Sequence(Node):
     """A composite node that executes children in order until one fails.
 
@@ -55,11 +64,7 @@ class Sequence(Node):
             elif status == NodeStatus.SUCCESS:
                 self.current_index += 1
             else:
-                child_name = getattr(child, "name", type(child).__name__)
-                raise ValueError(
-                    f"Node '{child_name}' returned unexpected status {status}. "
-                    f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
-                )
+                _raise_idle_error(child)
 
         self.current_index = 0
         return NodeStatus.SUCCESS
@@ -124,11 +129,7 @@ class Selector(Node):
             elif status == NodeStatus.FAILURE:
                 self.current_index += 1
             else:
-                child_name = getattr(child, "name", type(child).__name__)
-                raise ValueError(
-                    f"Node '{child_name}' returned unexpected status {status}. "
-                    f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
-                )
+                _raise_idle_error(child)
 
         self.current_index = 0
         return NodeStatus.FAILURE
@@ -213,11 +214,7 @@ class Parallel(Node):
         self._child_statuses[index] = status
 
         if status == NodeStatus.IDLE:
-            child_name = getattr(child, "name", type(child).__name__)
-            raise ValueError(
-                f"Node '{child_name}' returned unexpected status {status}. "
-                f"Nodes must return SUCCESS, FAILURE, or RUNNING from tick()."
-            )
+            _raise_idle_error(child)
         return status
 
     def _evaluate_thresholds(
