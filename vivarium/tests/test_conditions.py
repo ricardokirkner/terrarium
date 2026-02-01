@@ -1,6 +1,6 @@
 import pytest
 
-from core import Action, Condition, NodeStatus, Selector, Sequence
+from vivarium.core import Action, Condition, NodeStatus, Selector, Sequence
 
 
 class AlwaysTrueCondition(Condition):
@@ -88,7 +88,7 @@ class TestConditionReset:
 
 class TestConditionIsNode:
     def test_condition_is_subclass_of_node(self):
-        from core import Node
+        from vivarium.core import Node
 
         assert issubclass(Condition, Node)
 

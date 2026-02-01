@@ -3,8 +3,8 @@
 
 .PHONY: help install test test-coverage lint format typecheck clean
 
-SRC := main.py core/
-SRC_MODULES := main core
+SRC := src/vivarium/
+SRC_MODULES := vivarium
 
 # Default target
 .DEFAULT_GOAL := help

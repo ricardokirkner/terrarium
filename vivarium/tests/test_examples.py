@@ -6,7 +6,7 @@ by exercising real workflows end-to-end.
 
 import pytest
 
-from core import (
+from vivarium.core import (
     Action,
     BehaviorTree,
     Condition,

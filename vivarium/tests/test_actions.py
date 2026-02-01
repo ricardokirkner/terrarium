@@ -1,6 +1,6 @@
 import pytest
 
-from core import Action, NodeStatus
+from vivarium.core import Action, NodeStatus
 
 
 class ConcreteSuccessAction(Action):
@@ -119,12 +119,12 @@ class TestActionReset:
 
 class TestActionIsNode:
     def test_action_is_subclass_of_node(self):
-        from core import Node
+        from vivarium.core import Node
 
         assert issubclass(Action, Node)
 
     def test_action_can_be_used_in_composite(self):
-        from core import Sequence
+        from vivarium.core import Sequence
 
         action1 = ConcreteSuccessAction("action1")
         action2 = ConcreteSuccessAction("action2")

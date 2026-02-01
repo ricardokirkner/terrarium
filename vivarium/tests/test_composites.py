@@ -1,6 +1,6 @@
 import pytest
 
-from core import Node, NodeStatus, Parallel, Selector, Sequence
+from vivarium.core import Node, NodeStatus, Parallel, Selector, Sequence
 
 
 class MockNode(Node):

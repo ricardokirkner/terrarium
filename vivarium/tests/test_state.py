@@ -1,6 +1,6 @@
 import pytest
 
-from core import Action, Condition, NodeStatus, Sequence, State
+from vivarium.core import Action, Condition, NodeStatus, Sequence, State
 
 
 class TestStateBasicOperations:

@@ -1,6 +1,6 @@
 import pytest
 
-from core import (
+from vivarium.core import (
     Action,
     BehaviorTree,
     Condition,
