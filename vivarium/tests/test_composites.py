@@ -2,38 +2,7 @@ import pytest
 
 from vivarium.core import Node, NodeStatus, Parallel, Selector, Sequence
 
-
-class MockNode(Node):
-    """A mock node that returns a configurable status."""
-
-    def __init__(self, name: str, status: NodeStatus = NodeStatus.SUCCESS):
-        self.name = name
-        self._status = status
-        self.tick_count = 0
-        self._reset_called = False
-
-    def tick(self, state) -> NodeStatus:
-        self.tick_count += 1
-        return self._status
-
-    def reset(self):
-        self._reset_called = True
-        self.tick_count = 0
-
-
-class OrderTrackingNode(Node):
-    """A node that records its execution order to a shared list."""
-
-    def __init__(self, name: str, execution_order: list[str]):
-        self.name = name
-        self._execution_order = execution_order
-
-    def tick(self, state) -> NodeStatus:
-        self._execution_order.append(self.name)
-        return NodeStatus.SUCCESS
-
-    def reset(self):
-        pass
+from .helpers import MockNode, OrderTrackingNode
 
 
 class TestSequence:

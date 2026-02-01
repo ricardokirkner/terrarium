@@ -10,67 +10,15 @@ from vivarium.core import (
     State,
 )
 
-# Helper nodes for testing
-
-
-class SuccessAction(Action):
-    """An action that always returns SUCCESS."""
-
-    def execute(self, state) -> NodeStatus:
-        return NodeStatus.SUCCESS
-
-
-class FailureAction(Action):
-    """An action that always returns FAILURE."""
-
-    def execute(self, state) -> NodeStatus:
-        return NodeStatus.FAILURE
-
-
-class RunningAction(Action):
-    """An action that always returns RUNNING."""
-
-    def execute(self, state) -> NodeStatus:
-        return NodeStatus.RUNNING
-
-
-class IncrementAction(Action):
-    """An action that increments a counter in state."""
-
-    def __init__(self, name: str, key: str = "counter"):
-        super().__init__(name)
-        self.key = key
-
-    def execute(self, state) -> NodeStatus:
-        state[self.key] = state.get(self.key, 0) + 1
-        return NodeStatus.SUCCESS
-
-
-class SetValueAction(Action):
-    """An action that sets a value in state."""
-
-    def __init__(self, name: str, key: str, value):
-        super().__init__(name)
-        self.key = key
-        self.value = value
-
-    def execute(self, state) -> NodeStatus:
-        state[self.key] = self.value
-        return NodeStatus.SUCCESS
-
-
-class TrueCondition(Condition):
-    """A condition that always returns True."""
-
-    def evaluate(self, state) -> bool:
-        return True
-
-
-class FalseCondition(Condition):
-    """A condition that always returns False."""
-
-    def evaluate(self, state) -> bool:
-        return False
+from .helpers import (
+    FailureAction,
+    FalseCondition,
+    IncrementAction,
+    RunningAction,
+    SetValueAction,
+    SuccessAction,
+    TrueCondition,
+)
 
 
 class TestBehaviorTreeCreation:
