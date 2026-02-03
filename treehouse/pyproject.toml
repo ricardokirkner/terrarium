@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Treehouse is an external observability and interpretability tool for behavior-tree-driven agents"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "vivarium",
+]
+
+[tool.uv.sources]
+vivarium = { path = "../vivarium" }
 
 [build-system]
 requires = ["hatchling"]
