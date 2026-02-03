@@ -10,7 +10,7 @@ class ConcreteSuccessNode(Node):
         self.name = name
         self._reset_called = False
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         return NodeStatus.SUCCESS
 
     def reset(self):
@@ -23,7 +23,7 @@ class ConcreteFailureNode(Node):
     def __init__(self, name: str):
         self.name = name
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         return NodeStatus.FAILURE
 
     def reset(self):
@@ -36,7 +36,7 @@ class ConcreteRunningNode(Node):
     def __init__(self, name: str):
         self.name = name
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         return NodeStatus.RUNNING
 
     def reset(self):
@@ -49,7 +49,7 @@ class ConcreteIdleNode(Node):
     def __init__(self, name: str):
         self.name = name
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         return NodeStatus.IDLE
 
     def reset(self):
@@ -63,7 +63,7 @@ class StateCapturingNode(Node):
         self.name = name
         self.captured_state = None
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         self.captured_state = state
         return NodeStatus.SUCCESS
 
@@ -101,7 +101,7 @@ class TestNodeAbstract:
         with pytest.raises(TypeError):
 
             class MissingInit(Node):
-                def tick(self, state) -> NodeStatus:
+                def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                     return NodeStatus.SUCCESS
 
                 def reset(self):
@@ -128,7 +128,7 @@ class TestNodeAbstract:
                 def __init__(self, name: str):
                     self.name = name
 
-                def tick(self, state) -> NodeStatus:
+                def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                     return NodeStatus.SUCCESS
 
             MissingReset("test")
@@ -176,7 +176,7 @@ class TestConcreteNode:
             def __init__(self, name: str):
                 self.name = name
 
-            def tick(self, state) -> NodeStatus:
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                 state["modified"] = True
                 return NodeStatus.SUCCESS
 

@@ -1,4 +1,7 @@
-from .node import Node, NodeStatus
+from .context import ExecutionContext
+from .events import EventEmitter, NodeEntered, NodeExited
+from .node import Node
+from .status import NodeStatus
 
 
 def _raise_idle_error(child: Node) -> None:
@@ -38,11 +41,18 @@ class Sequence(Node):
         self.children: list[Node] = children if children is not None else []
         self.current_index: int = 0
 
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Execute children in order until one fails or returns RUNNING.
 
         Args:
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             FAILURE if any child fails.
@@ -52,22 +62,60 @@ class Sequence(Node):
         Raises:
             ValueError: If a child returns IDLE (invalid during execution).
         """
+        # Set up context for this node if emitting
+        node_ctx = None
+        if emitter is not None and ctx is not None:
+            node_ctx = ctx.child(self.name, "Sequence")
+            emitter.emit(
+                NodeEntered(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Sequence",
+                    path_in_tree=node_ctx.path,
+                )
+            )
+
+        def emit_exit(result: NodeStatus) -> NodeStatus:
+            if emitter is not None and ctx is not None and node_ctx is not None:
+                emitter.emit(
+                    NodeExited(
+                        tick_id=ctx.tick_id,
+                        node_id=self.name,
+                        node_type="Sequence",
+                        path_in_tree=node_ctx.path,
+                        result=result,
+                    )
+                )
+            return result
+
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
-            status = child.tick(state)
+
+            # Create child context with index if emitting
+            child_ctx = None
+            if emitter is not None and node_ctx is not None:
+                child_ctx = node_ctx.child(
+                    getattr(child, "name", type(child).__name__),
+                    type(child).__name__,
+                    self.current_index,
+                )
+                # Pass parent context so child builds path correctly
+                child_ctx = node_ctx
+
+            status = child.tick(state, emitter, child_ctx)
 
             if status == NodeStatus.FAILURE:
                 self.current_index = 0
-                return NodeStatus.FAILURE
+                return emit_exit(NodeStatus.FAILURE)
             elif status == NodeStatus.RUNNING:
-                return NodeStatus.RUNNING
+                return emit_exit(NodeStatus.RUNNING)
             elif status == NodeStatus.SUCCESS:
                 self.current_index += 1
             else:
                 _raise_idle_error(child)
 
         self.current_index = 0
-        return NodeStatus.SUCCESS
+        return emit_exit(NodeStatus.SUCCESS)
 
     def reset(self):
         """Reset this node and all children to their initial state."""
@@ -103,11 +151,18 @@ class Selector(Node):
         self.children: list[Node] = children if children is not None else []
         self.current_index: int = 0
 
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Try children in order until one succeeds or returns RUNNING.
 
         Args:
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             SUCCESS if any child succeeds.
@@ -117,22 +172,51 @@ class Selector(Node):
         Raises:
             ValueError: If a child returns IDLE (invalid during execution).
         """
+        # Set up context for this node if emitting
+        node_ctx = None
+        if emitter is not None and ctx is not None:
+            node_ctx = ctx.child(self.name, "Selector")
+            emitter.emit(
+                NodeEntered(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Selector",
+                    path_in_tree=node_ctx.path,
+                )
+            )
+
+        def emit_exit(result: NodeStatus) -> NodeStatus:
+            if emitter is not None and ctx is not None and node_ctx is not None:
+                emitter.emit(
+                    NodeExited(
+                        tick_id=ctx.tick_id,
+                        node_id=self.name,
+                        node_type="Selector",
+                        path_in_tree=node_ctx.path,
+                        result=result,
+                    )
+                )
+            return result
+
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
-            status = child.tick(state)
+            child_ctx = (
+                node_ctx if emitter is not None and node_ctx is not None else None
+            )
+            status = child.tick(state, emitter, child_ctx)
 
             if status == NodeStatus.SUCCESS:
                 self.current_index = 0
-                return NodeStatus.SUCCESS
+                return emit_exit(NodeStatus.SUCCESS)
             elif status == NodeStatus.RUNNING:
-                return NodeStatus.RUNNING
+                return emit_exit(NodeStatus.RUNNING)
             elif status == NodeStatus.FAILURE:
                 self.current_index += 1
             else:
                 _raise_idle_error(child)
 
         self.current_index = 0
-        return NodeStatus.FAILURE
+        return emit_exit(NodeStatus.FAILURE)
 
     def reset(self):
         """Reset this node and all children to their initial state."""
@@ -192,13 +276,22 @@ class Parallel(Node):
         while len(self._child_statuses) < len(self.children):
             self._child_statuses.append(None)
 
-    def _tick_child(self, index: int, child: Node, state) -> NodeStatus:
+    def _tick_child(
+        self,
+        index: int,
+        child: Node,
+        state,
+        emitter: "EventEmitter | None" = None,
+        node_ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Tick a child if not already completed, updating cached status.
 
         Args:
             index: Index of the child in the children list.
             child: The child node to tick.
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            node_ctx: Optional execution context for this Parallel node.
 
         Returns:
             The child's status (cached if already completed).
@@ -210,7 +303,7 @@ class Parallel(Node):
         if cached in (NodeStatus.SUCCESS, NodeStatus.FAILURE):
             return cached  # type: ignore[return-value]
 
-        status = child.tick(state)
+        status = child.tick(state, emitter, node_ctx)
         self._child_statuses[index] = status
 
         if status == NodeStatus.IDLE:
@@ -241,7 +334,12 @@ class Parallel(Node):
             return NodeStatus.RUNNING
         return NodeStatus.FAILURE
 
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Execute all children and evaluate based on thresholds.
 
         Children that have already completed (returned SUCCESS or FAILURE) are
@@ -250,6 +348,8 @@ class Parallel(Node):
 
         Args:
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             SUCCESS if success_threshold children succeed.
@@ -259,8 +359,34 @@ class Parallel(Node):
         Raises:
             ValueError: If a child returns IDLE (invalid during execution).
         """
+        # Set up context for this node if emitting
+        node_ctx = None
+        if emitter is not None and ctx is not None:
+            node_ctx = ctx.child(self.name, "Parallel")
+            emitter.emit(
+                NodeEntered(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Parallel",
+                    path_in_tree=node_ctx.path,
+                )
+            )
+
+        def emit_exit(result: NodeStatus) -> NodeStatus:
+            if emitter is not None and ctx is not None and node_ctx is not None:
+                emitter.emit(
+                    NodeExited(
+                        tick_id=ctx.tick_id,
+                        node_id=self.name,
+                        node_type="Parallel",
+                        path_in_tree=node_ctx.path,
+                        result=result,
+                    )
+                )
+            return result
+
         if not self.children:
-            return NodeStatus.SUCCESS
+            return emit_exit(NodeStatus.SUCCESS)
 
         self._ensure_status_list_size()
 
@@ -269,7 +395,7 @@ class Parallel(Node):
         running_count = 0
 
         for i, child in enumerate(self.children):
-            status = self._tick_child(i, child, state)
+            status = self._tick_child(i, child, state, emitter, node_ctx)
             if status == NodeStatus.SUCCESS:
                 success_count += 1
             elif status == NodeStatus.FAILURE:
@@ -277,7 +403,8 @@ class Parallel(Node):
             else:
                 running_count += 1
 
-        return self._evaluate_thresholds(success_count, failure_count, running_count)
+        result = self._evaluate_thresholds(success_count, failure_count, running_count)
+        return emit_exit(result)
 
     def reset(self):
         """Reset this node and all children to their initial state."""

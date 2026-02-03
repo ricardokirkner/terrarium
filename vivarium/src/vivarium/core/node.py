@@ -1,21 +1,11 @@
 from abc import ABC, abstractmethod
-from enum import Enum
+from typing import TYPE_CHECKING
 
+from .status import NodeStatus
 
-class NodeStatus(Enum):
-    """Status values returned by behavior tree nodes after a tick.
-
-    Attributes:
-        SUCCESS: The node completed its task successfully.
-        FAILURE: The node failed to complete its task.
-        RUNNING: The node is still executing and needs more ticks to complete.
-        IDLE: The node has not been ticked yet or has been reset.
-    """
-
-    SUCCESS = "success"
-    FAILURE = "failure"
-    RUNNING = "running"
-    IDLE = "idle"
+if TYPE_CHECKING:
+    from .context import ExecutionContext
+    from .events import EventEmitter
 
 
 class Node(ABC):
@@ -35,11 +25,18 @@ class Node(ABC):
         pass  # pragma: no cover
 
     @abstractmethod
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Execute one tick of this node's behavior.
 
         Args:
             state: The current state of the behavior tree, passed down from the root.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             NodeStatus indicating the result of this tick (SUCCESS, FAILURE, RUNNING,

@@ -16,7 +16,10 @@ serve different purposes in the behavior tree structure.
 
 from abc import abstractmethod
 
-from .node import Node, NodeStatus
+from .context import ExecutionContext
+from .events import ActionCompleted, ActionInvoked, EventEmitter
+from .node import Node
+from .status import NodeStatus
 
 
 class Action(Node):
@@ -58,17 +61,47 @@ class Action(Node):
         """
         pass  # pragma: no cover
 
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Execute one tick of this action.
 
         Delegates to the execute() method which subclasses must implement.
+        Emits action_invoked and action_completed events if an emitter is provided.
 
         Args:
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             The result of execute().
         """
+        if emitter is not None and ctx is not None:
+            node_ctx = ctx.child(self.name, "Action")
+            emitter.emit(
+                ActionInvoked(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Action",
+                    path_in_tree=node_ctx.path,
+                )
+            )
+            result = self.execute(state)
+            emitter.emit(
+                ActionCompleted(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Action",
+                    path_in_tree=node_ctx.path,
+                    result=result,
+                )
+            )
+            return result
+
         return self.execute(state)
 
     def reset(self):

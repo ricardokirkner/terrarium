@@ -21,7 +21,7 @@ class MockNode(Node):
         self.tick_count = 0
         self._reset_called = False
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         self.tick_count += 1
         return self._status
 
@@ -37,7 +37,7 @@ class OrderTrackingNode(Node):
         self.name = name
         self._execution_order = execution_order
 
-    def tick(self, state) -> NodeStatus:
+    def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
         self._execution_order.append(self.name)
         return NodeStatus.SUCCESS
 

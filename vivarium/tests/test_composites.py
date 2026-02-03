@@ -175,7 +175,7 @@ class TestSequence:
                 # Intentionally don't set self.name
                 pass
 
-            def tick(self, state) -> NodeStatus:
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                 return NodeStatus.IDLE
 
             def reset(self):
@@ -300,7 +300,7 @@ class TestSelector:
                 # Intentionally don't set self.name
                 pass
 
-            def tick(self, state) -> NodeStatus:
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                 return NodeStatus.IDLE
 
             def reset(self):
@@ -348,7 +348,7 @@ class TestParallel:
                 self.ticks_until_done = ticks_until_done
                 self.tick_count = 0
 
-            def tick(self, state) -> NodeStatus:
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                 self.tick_count += 1
                 if self.tick_count >= self.ticks_until_done:
                     return NodeStatus.SUCCESS
@@ -604,7 +604,7 @@ class TestParallel:
                 # Intentionally don't set self.name
                 pass
 
-            def tick(self, state) -> NodeStatus:
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
                 return NodeStatus.IDLE
 
             def reset(self):

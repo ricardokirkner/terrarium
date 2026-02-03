@@ -16,7 +16,10 @@ either SUCCESS (condition is true) or FAILURE (condition is false).
 
 from abc import abstractmethod
 
-from .node import Node, NodeStatus
+from .context import ExecutionContext
+from .events import ConditionEvaluated, EventEmitter
+from .node import Node
+from .status import NodeStatus
 
 
 class Condition(Node):
@@ -57,19 +60,42 @@ class Condition(Node):
         """
         pass  # pragma: no cover
 
-    def tick(self, state) -> NodeStatus:
+    def tick(
+        self,
+        state,
+        emitter: "EventEmitter | None" = None,
+        ctx: "ExecutionContext | None" = None,
+    ) -> NodeStatus:
         """Execute one tick of this condition.
 
         Calls evaluate() and converts the boolean result to a NodeStatus.
+        Emits condition_evaluated event if an emitter is provided.
 
         Args:
             state: The current state of the behavior tree.
+            emitter: Optional event emitter for observation.
+            ctx: Optional execution context for tracking position in tree.
 
         Returns:
             SUCCESS if evaluate() returns True.
             FAILURE if evaluate() returns False.
         """
-        return NodeStatus.SUCCESS if self.evaluate(state) else NodeStatus.FAILURE
+        bool_result = self.evaluate(state)
+        status = NodeStatus.SUCCESS if bool_result else NodeStatus.FAILURE
+
+        if emitter is not None and ctx is not None:
+            node_ctx = ctx.child(self.name, "Condition")
+            emitter.emit(
+                ConditionEvaluated(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Condition",
+                    path_in_tree=node_ctx.path,
+                    result=bool_result,
+                )
+            )
+
+        return status
 
     def reset(self):
         """Reset this condition to its initial state.
