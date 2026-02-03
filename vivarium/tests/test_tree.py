@@ -5,10 +5,17 @@ from vivarium.core import (
     BehaviorTree,
     Condition,
     NodeStatus,
+    Parallel,
     Selector,
     Sequence,
     State,
 )
+from vivarium.core.events import (
+    ListEventEmitter,
+    TickCompleted,
+    TickStarted,
+)
+from vivarium.core.node import Node
 
 from .helpers import (
     FailureAction,
@@ -288,3 +295,137 @@ class TestBehaviorTreeIntegration:
 
         assert result == NodeStatus.SUCCESS
         assert state.get("branch") == "seq2"  # First seq fails, second succeeds
+
+
+class TestBehaviorTreeEventEmission:
+    """Test event emission from BehaviorTree."""
+
+    def test_tree_emits_tick_events(self):
+        """BehaviorTree should emit tick_started and tick_completed events."""
+        emitter = ListEventEmitter()
+        action = SuccessAction("success")
+        tree = BehaviorTree(root=action, emitter=emitter)
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        # Events: tick_started, action_invoked, action_completed, tick_completed
+        assert len(emitter.events) == 4
+        assert isinstance(emitter.events[0], TickStarted)
+        assert emitter.events[0].tick_id == 1
+        assert isinstance(emitter.events[-1], TickCompleted)
+        assert emitter.events[-1].tick_id == 1
+        assert emitter.events[-1].result == NodeStatus.SUCCESS
+
+    def test_tree_without_emitter(self):
+        """BehaviorTree without emitter should work normally."""
+        action = SuccessAction("success")
+        tree = BehaviorTree(root=action)
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        assert tree.tick_count == 1
+
+    def test_tree_emits_full_event_stream(self):
+        """BehaviorTree should emit events for all node executions."""
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(
+            root=Sequence(
+                "main",
+                [
+                    TrueCondition("check"),
+                    SuccessAction("act"),
+                ],
+            ),
+            emitter=emitter,
+        )
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        event_types = [e.event_type for e in emitter.events]
+        # tick_started, node_entered(main), condition_evaluated, action_invoked,
+        # action_completed, node_exited(main), tick_completed
+        assert "tick_started" in event_types
+        assert "tick_completed" in event_types
+        assert "node_entered" in event_types
+        assert "node_exited" in event_types
+        assert "condition_evaluated" in event_types
+        assert "action_invoked" in event_types
+        assert "action_completed" in event_types
+
+    def test_tree_with_condition_root_emits_events(self):
+        """BehaviorTree with Condition root should emit condition_evaluated."""
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(root=TrueCondition("check"), emitter=emitter)
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        event_types = [e.event_type for e in emitter.events]
+        assert "tick_started" in event_types
+        assert "condition_evaluated" in event_types
+        assert "tick_completed" in event_types
+
+    def test_tree_with_selector_root_emits_events(self):
+        """BehaviorTree with Selector root should emit node events."""
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(
+            root=Selector("choice", [SuccessAction("a")]),
+            emitter=emitter,
+        )
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        event_types = [e.event_type for e in emitter.events]
+        assert "tick_started" in event_types
+        assert "node_entered" in event_types
+        assert "node_exited" in event_types
+        assert "tick_completed" in event_types
+
+    def test_tree_with_parallel_root_emits_events(self):
+        """BehaviorTree with Parallel root should emit node events."""
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(
+            root=Parallel("all", [SuccessAction("a"), SuccessAction("b")]),
+            emitter=emitter,
+        )
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        event_types = [e.event_type for e in emitter.events]
+        assert "tick_started" in event_types
+        assert "node_entered" in event_types
+        assert "node_exited" in event_types
+        assert "tick_completed" in event_types
+
+    def test_tree_with_unknown_root_type_works(self):
+        """BehaviorTree with unknown root type should still work."""
+
+        class CustomNode(Node):
+            def __init__(self, name: str):
+                self._name = name
+
+            @property
+            def name(self) -> str:
+                return self._name
+
+            def tick(self, state, emitter=None, ctx=None) -> NodeStatus:
+                return NodeStatus.SUCCESS
+
+            def reset(self):
+                pass
+
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(root=CustomNode("custom"), emitter=emitter)
+
+        result = tree.tick(State())
+
+        assert result == NodeStatus.SUCCESS
+        # Should still emit tick events
+        event_types = [e.event_type for e in emitter.events]
+        assert "tick_started" in event_types
+        assert "tick_completed" in event_types
