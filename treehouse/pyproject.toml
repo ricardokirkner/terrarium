@@ -8,6 +8,13 @@ dependencies = [
     "vivarium",
 ]
 
+[project.optional-dependencies]
+visualizer = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "websockets>=15.0",
+]
+
 [tool.uv.sources]
 vivarium = { path = "../vivarium" }
 

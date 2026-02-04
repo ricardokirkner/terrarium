@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treehouse Visualizer</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --success: #4ade80;
+            --failure: #f87171;
+            --running: #fbbf24;
+            --idle: #94a3b8;
+            --accent: #6366f1;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-connected {
+            background: var(--success);
+            color: #000;
+        }
+
+        .status-disconnected {
+            background: var(--failure);
+            color: #fff;
+        }
+
+        .status-connecting {
+            background: var(--running);
+            color: #000;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .tree-panel {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .details-panel {
+            width: 400px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--bg-tertiary);
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .details-panel h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        /* Tree visualization */
+        .tree-node {
+            padding: 0.25rem 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .tree-node:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .tree-node.selected {
+            background: var(--bg-tertiary);
+            outline: 2px solid var(--accent);
+        }
+
+        .node-content {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .node-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .node-status.success { background: var(--success); }
+        .node-status.failure { background: var(--failure); }
+        .node-status.running { background: var(--running); animation: pulse 1s infinite; }
+        .node-status.idle { background: var(--idle); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .node-name {
+            font-weight: 500;
+        }
+
+        .node-type {
+            color: var(--text-secondary);
+            font-size: 0.85em;
+        }
+
+        .node-duration {
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            margin-left: auto;
+        }
+
+        /* Details panel */
+        .detail-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-section h3 {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .detail-value {
+            background: var(--bg-primary);
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            word-break: break-word;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .detail-item {
+            background: var(--bg-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+
+        .detail-item label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .llm-content {
+            background: var(--bg-primary);
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        /* Events log */
+        .events-log {
+            font-size: 0.8rem;
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--bg-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+
+        .event-item {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-type {
+            color: var(--accent);
+        }
+
+        .event-time {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        footer {
+            background: var(--bg-secondary);
+            padding: 0.5rem 2rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--bg-tertiary);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Treehouse Visualizer</h1>
+        <span id="connection-status" class="status-badge status-connecting">
+            Connecting...
+        </span>
+    </header>
+
+    <main>
+        <div class="tree-panel">
+            <div id="tree-container">
+                <div class="empty-state">
+                    <p>Waiting for agent connection...</p>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem;">
+                        Run an agent with DebuggerClient to see execution here.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="details-panel">
+            <h2>Node Details</h2>
+            <div id="node-details">
+                <div class="empty-state">
+                    <p>Click a node to view details</p>
+                </div>
+            </div>
+
+            <div class="detail-section" style="margin-top: 2rem;">
+                <h3>Recent Events</h3>
+                <div id="events-log" class="events-log">
+                    <div class="empty-state">No events yet</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        Treehouse Visualizer v0.1.0
+    </footer>
+
+    <script>
+        // State
+        let ws = null;
+        let currentTrace = null;
+        let selectedNode = null;
+        let events = [];
+
+        // DOM elements
+        const statusEl = document.getElementById('connection-status');
+        const treeContainer = document.getElementById('tree-container');
+        const nodeDetails = document.getElementById('node-details');
+        const eventsLog = document.getElementById('events-log');
+
+        // Connect to WebSocket
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/viewer`;
+
+            statusEl.className = 'status-badge status-connecting';
+            statusEl.textContent = 'Connecting...';
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusEl.className = 'status-badge status-connected';
+                statusEl.textContent = 'Connected';
+                addEvent('system', 'Connected to server');
+            };
+
+            ws.onclose = () => {
+                statusEl.className = 'status-badge status-disconnected';
+                statusEl.textContent = 'Disconnected';
+                addEvent('system', 'Disconnected from server');
+                // Reconnect after 2 seconds
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addEvent('error', 'Connection error');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+        }
+
+        // Handle incoming messages
+        function handleMessage(message) {
+            const type = message.type;
+            addEvent(type, message.data ? JSON.stringify(message.data).slice(0, 50) : '');
+
+            switch (type) {
+                case 'trace_state':
+                    currentTrace = message.data;
+                    renderTree();
+                    break;
+
+                case 'trace_start':
+                    currentTrace = {
+                        trace_id: message.trace_id,
+                        tick_id: message.tick_id,
+                        start_time: message.timestamp,
+                        executions: [],
+                        status: 'running'
+                    };
+                    renderTree();
+                    break;
+
+                case 'node_execution':
+                    if (currentTrace) {
+                        currentTrace.executions.push(message.data);
+                        renderTree();
+                    }
+                    break;
+
+                case 'trace_complete':
+                    if (currentTrace) {
+                        currentTrace.end_time = message.timestamp;
+                        currentTrace.status = message.status;
+                        renderTree();
+                    }
+                    break;
+            }
+        }
+
+        // Add event to log
+        function addEvent(type, detail) {
+            const time = new Date().toLocaleTimeString();
+            events.unshift({ type, detail, time });
+            events = events.slice(0, 50); // Keep last 50 events
+            renderEvents();
+        }
+
+        // Render events log
+        function renderEvents() {
+            if (events.length === 0) {
+                eventsLog.innerHTML = '<div class="empty-state">No events yet</div>';
+                return;
+            }
+
+            eventsLog.innerHTML = events.map(e => `
+                <div class="event-item">
+                    <span class="event-type">${e.type}</span>
+                    <span class="event-time">${e.time}</span>
+                    ${e.detail ? `<div style="color: var(--text-secondary)">${e.detail}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Render tree visualization
+        function renderTree() {
+            if (!currentTrace || !currentTrace.executions || currentTrace.executions.length === 0) {
+                treeContainer.innerHTML = `
+                    <div class="empty-state">
+                        <p>Waiting for agent connection...</p>
+                        <p style="margin-top: 0.5rem; font-size: 0.85rem;">
+                            Run an agent with DebuggerClient to see execution here.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = currentTrace.executions.map((exec, i) => {
+                const depth = getDepth(exec.path_in_tree);
+                const indent = depth * 24;
+                const isSelected = selectedNode && selectedNode.node_id === exec.node_id;
+                const duration = exec.duration_ms > 0 ? formatDuration(exec.duration_ms) : '';
+
+                return `
+                    <div class="tree-node ${isSelected ? 'selected' : ''}"
+                         style="padding-left: ${indent}px"
+                         data-index="${i}">
+                        <div class="node-content">
+                            <div class="node-status ${exec.status}"></div>
+                            <span class="node-name">${getNodeName(exec.path_in_tree)}</span>
+                            <span class="node-type">[${exec.node_type}]</span>
+                            ${duration ? `<span class="node-duration">${duration}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            treeContainer.innerHTML = html;
+
+            // Add click handlers
+            treeContainer.querySelectorAll('.tree-node').forEach(node => {
+                node.addEventListener('click', () => {
+                    const index = parseInt(node.dataset.index);
+                    selectNode(currentTrace.executions[index]);
+                });
+            });
+        }
+
+        // Select a node and show details
+        function selectNode(node) {
+            selectedNode = node;
+            renderTree();
+            renderNodeDetails(node);
+        }
+
+        // Render node details panel
+        function renderNodeDetails(node) {
+            if (!node) {
+                nodeDetails.innerHTML = '<div class="empty-state">Click a node to view details</div>';
+                return;
+            }
+
+            const hasLlm = node.llm_prompt || node.llm_response;
+
+            let html = `
+                <div class="detail-section">
+                    <h3>Node Info</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Name</label>
+                            ${getNodeName(node.path_in_tree)}
+                        </div>
+                        <div class="detail-item">
+                            <label>Type</label>
+                            ${node.node_type}
+                        </div>
+                        <div class="detail-item">
+                            <label>Status</label>
+                            <span style="color: var(--${node.status})">${node.status}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Duration</label>
+                            ${formatDuration(node.duration_ms)}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>Path</h3>
+                    <div class="detail-value">${node.path_in_tree}</div>
+                </div>
+            `;
+
+            if (hasLlm) {
+                const tokens = node.llm_tokens || {};
+                html += `
+                    <div class="detail-section">
+                        <h3>LLM Data</h3>
+                        <div class="detail-grid" style="margin-bottom: 0.5rem;">
+                            <div class="detail-item">
+                                <label>Model</label>
+                                ${node.llm_model || 'unknown'}
+                            </div>
+                            <div class="detail-item">
+                                <label>Tokens</label>
+                                ${tokens.total || 0} (${tokens.prompt || 0}p/${tokens.completion || 0}c)
+                            </div>
+                            <div class="detail-item">
+                                <label>Cost</label>
+                                ${node.llm_cost ? '$' + node.llm_cost.toFixed(4) : 'free'}
+                            </div>
+                            <div class="detail-item">
+                                <label>Latency</label>
+                                ${formatDuration(node.duration_ms)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                if (node.llm_prompt) {
+                    html += `
+                        <div class="detail-section">
+                            <h3>Prompt</h3>
+                            <div class="llm-content">${escapeHtml(node.llm_prompt)}</div>
+                        </div>
+                    `;
+                }
+
+                if (node.llm_response) {
+                    html += `
+                        <div class="detail-section">
+                            <h3>Response</h3>
+                            <div class="llm-content">${escapeHtml(node.llm_response)}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            nodeDetails.innerHTML = html;
+        }
+
+        // Utility functions
+        function getDepth(path) {
+            if (!path) return 0;
+            return (path.match(/\//g) || []).length;
+        }
+
+        function getNodeName(path) {
+            if (!path) return '';
+            let name = path.split('/').pop();
+            if (name.includes('[')) {
+                name = name.split('[')[0];
+            }
+            return name;
+        }
+
+        function formatDuration(ms) {
+            if (!ms || ms < 1) return '<1ms';
+            if (ms < 1000) return ms.toFixed(0) + 'ms';
+            return (ms / 1000).toFixed(2) + 's';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>
