@@ -204,13 +204,22 @@ class TraceCollector:
 
     For LLM nodes, the collector can extract LLM execution data from the
     state if provided via set_state().
+
+    For real-time visualization, optionally provide a DebuggerClient to
+    stream events to the visualizer server.
     """
 
-    def __init__(self):
+    def __init__(self, debugger=None):
+        """Initialize the TraceCollector.
+
+        Args:
+            debugger: Optional DebuggerClient for streaming events to visualizer.
+        """
         self._pending: dict[str, Event] = {}  # path_in_tree -> start event
         self._current_trace: ExecutionTrace | None = None
         self._traces: list[ExecutionTrace] = []
         self._state: dict | None = None  # Reference to state for LLM data extraction
+        self._debugger = debugger  # Optional DebuggerClient
 
     def set_state(self, state: dict) -> None:
         """Set the state reference for LLM data extraction.
@@ -221,6 +230,14 @@ class TraceCollector:
             state: The behavior tree state dict.
         """
         self._state = state
+
+    def set_debugger(self, debugger) -> None:
+        """Set the debugger client for real-time streaming.
+
+        Args:
+            debugger: DebuggerClient instance.
+        """
+        self._debugger = debugger
 
     def emit(self, event: Event) -> None:
         """Receive events from Vivarium and build NodeExecution objects.
@@ -248,12 +265,34 @@ class TraceCollector:
         )
         self._pending.clear()
 
+        # Stream to debugger if connected
+        if self._debugger:
+            self._debugger.send_sync(
+                {
+                    "type": "trace_start",
+                    "trace_id": self._current_trace.trace_id,
+                    "tick_id": event.tick_id,
+                    "timestamp": event.timestamp.isoformat(),
+                }
+            )
+
     def _complete_trace(self, event: Event) -> None:
         """Complete the current trace."""
         if self._current_trace is not None:
             self._current_trace.end_time = event.timestamp
             self._current_trace.status = event.payload.get("result", "unknown")
             self._traces.append(self._current_trace)
+
+            # Stream to debugger if connected
+            if self._debugger:
+                self._debugger.send_sync(
+                    {
+                        "type": "trace_complete",
+                        "status": self._current_trace.status,
+                        "timestamp": event.timestamp.isoformat(),
+                    }
+                )
+
             self._current_trace = None
 
     def _complete_node(self, end_event: Event) -> None:
@@ -283,6 +322,15 @@ class TraceCollector:
         if self._current_trace is not None:
             self._current_trace.executions.append(execution)
 
+        # Stream to debugger if connected
+        if self._debugger:
+            self._debugger.send_sync(
+                {
+                    "type": "node_execution",
+                    "data": execution.to_dict(),
+                }
+            )
+
     def _record_condition(self, event: Event) -> None:
         """Record a condition evaluation (no start event, instant)."""
         # Convert bool result to status string
@@ -305,6 +353,15 @@ class TraceCollector:
 
         if self._current_trace is not None:
             self._current_trace.executions.append(execution)
+
+        # Stream to debugger if connected
+        if self._debugger:
+            self._debugger.send_sync(
+                {
+                    "type": "node_execution",
+                    "data": execution.to_dict(),
+                }
+            )
 
     def _extract_llm_data(self, node_id: str) -> dict:
         """Extract LLM execution data from state for a node.
