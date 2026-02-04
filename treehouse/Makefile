@@ -1,7 +1,7 @@
 # Makefile for treehouse
 # Development automation and common tasks
 
-.PHONY: help install test test-coverage lint format typecheck clean
+.PHONY: help install test test-coverage lint format typecheck clean visualizer
 
 SRC := src/treehouse/
 SRC_MODULES := treehouse
@@ -70,6 +70,15 @@ clean: ## Remove build artifacts and cache
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
 	@echo "✅ Cleanup complete!"
+
+##@ Visualizer
+
+visualizer: ## Start the web visualizer server (dev mode with reload)
+	@echo "🌐 Starting Treehouse Visualizer at http://localhost:8000..."
+	uv run uvicorn treehouse.visualizer.server:app --reload
+
+visualizer-prod: ## Start the web visualizer server (production mode)
+	uv run uvicorn treehouse.visualizer.server:app --host 0.0.0.0 --port 8000
 
 ##@ CI/CD
 
