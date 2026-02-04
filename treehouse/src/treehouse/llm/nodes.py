@@ -13,11 +13,41 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Coroutine, TypeVar
 
 from vivarium.core import Action, Condition, NodeStatus
 
 from treehouse.llm.provider import LLMError, LLMProvider, LLMRequest, LLMResponse
+
+T = TypeVar("T")
+
+
+def _run_async(coro: Coroutine[Any, Any, T]) -> T:
+    """Run an async coroutine from a sync context.
+
+    Handles the case where we're already inside an event loop
+    (e.g., when called from an async context).
+
+    Args:
+        coro: The coroutine to run.
+
+    Returns:
+        The result of the coroutine.
+    """
+    try:
+        # Check if there's already a running event loop
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop, use asyncio.run()
+        return asyncio.run(coro)
+
+    # We're inside an existing event loop
+    # Create a new thread to run the coroutine
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(asyncio.run, coro)
+        return future.result()
 
 
 @dataclass
@@ -154,8 +184,8 @@ class LLMAction(Action):
                 json_mode=self.json_mode,
             )
 
-            # Execute async LLM call synchronously
-            response = asyncio.run(self.provider.complete(request))
+            # Execute async LLM call (handles both sync and async contexts)
+            response = _run_async(self.provider.complete(request))
             self._last_response = response
 
             # Store response in state if output_key is set
@@ -294,8 +324,8 @@ class LLMCondition(Condition):
                 max_tokens=20,  # Short answer expected
             )
 
-            # Execute async LLM call synchronously
-            response = asyncio.run(self.provider.complete(request))
+            # Execute async LLM call (handles both sync and async contexts)
+            response = _run_async(self.provider.complete(request))
             self._last_response = response
 
             # Parse the response to boolean
