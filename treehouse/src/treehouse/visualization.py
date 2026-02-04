@@ -70,6 +70,36 @@ def _format_duration(duration_ms: float) -> str:
         return f"{duration_ms / 1000:.2f}s"
 
 
+def _truncate(text: str, max_len: int = 50) -> str:
+    """Truncate text to max length with ellipsis."""
+    if not text:
+        return ""
+    # Replace newlines with spaces for single-line display
+    text = text.replace("\n", " ").strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _format_tokens(tokens: dict[str, int] | None) -> str:
+    """Format token usage dict for display."""
+    if not tokens:
+        return ""
+    total = tokens.get("total", 0)
+    prompt = tokens.get("prompt", 0)
+    completion = tokens.get("completion", 0)
+    return f"{total} tokens ({prompt}p/{completion}c)"
+
+
+def _format_cost(cost: float | None) -> str:
+    """Format cost for display."""
+    if cost is None or cost == 0:
+        return "free"
+    if cost < 0.01:
+        return f"${cost:.4f}"
+    return f"${cost:.2f}"
+
+
 def _get_depth(path: str) -> int:
     """Get the depth of a node from its path."""
     if not path:
@@ -94,6 +124,7 @@ def print_trace(
     use_color: bool | None = None,
     show_duration: bool = True,
     show_path: bool = False,
+    show_llm: bool = True,
 ) -> None:
     """Print an execution trace in a tree-like format.
 
@@ -103,6 +134,7 @@ def print_trace(
         use_color: Whether to use ANSI colors. Auto-detected if None.
         show_duration: Whether to show execution duration for each node.
         show_path: Whether to show the full path instead of just the name.
+        show_llm: Whether to show LLM prompt/response for LLM nodes.
 
     Example output:
         Trace #1 [success] (12.5ms)
@@ -140,7 +172,7 @@ def print_trace(
 
     # Build tree structure from flat executions
     _print_executions_as_tree(
-        trace.executions, file, use_color, show_duration, show_path
+        trace.executions, file, use_color, show_duration, show_path, show_llm
     )
 
 
@@ -150,6 +182,7 @@ def _print_executions_as_tree(
     use_color: bool,
     show_duration: bool,
     show_path: bool,
+    show_llm: bool = True,
 ) -> None:
     """Print executions with tree-like indentation."""
     for i, execution in enumerate(executions):
@@ -185,6 +218,60 @@ def _print_executions_as_tree(
 
         line = f"{indent}{connector}{name} {type_str} {status}{duration}"
         print(line, file=file)
+
+        # Show LLM data if present and enabled
+        if show_llm and execution.has_llm_data:
+            _print_llm_data(execution, file, use_color, indent, is_last)
+
+
+def _print_llm_data(
+    execution: NodeExecution,
+    file: TextIO,
+    use_color: bool,
+    parent_indent: str,
+    is_last_node: bool,
+) -> None:
+    """Print LLM execution data for a node."""
+    # Continue the tree line if not last node
+    continuation = "    " if is_last_node else "│   "
+    indent = parent_indent + continuation
+
+    # Token/cost info
+    tokens_str = _format_tokens(execution.llm_tokens)
+    cost_str = _format_cost(execution.llm_cost)
+    model = execution.llm_model or "unknown"
+
+    if use_color:
+        model_str = f"{Colors.CYAN}{model}{Colors.RESET}"
+        info_line = (
+            f"{indent}    {Colors.DIM}{model_str} | "
+            f"{tokens_str} | {cost_str}{Colors.RESET}"
+        )
+    else:
+        info_line = f"{indent}    [{model}] {tokens_str} | {cost_str}"
+    print(info_line, file=file)
+
+    # Prompt (truncated)
+    if execution.llm_prompt:
+        prompt_preview = _truncate(execution.llm_prompt, 60)
+        if use_color:
+            print(
+                f"{indent}    {Colors.DIM}Prompt: {prompt_preview}{Colors.RESET}",
+                file=file,
+            )
+        else:
+            print(f"{indent}    Prompt: {prompt_preview}", file=file)
+
+    # Response (truncated)
+    if execution.llm_response:
+        response_preview = _truncate(execution.llm_response, 60)
+        if use_color:
+            print(
+                f"{indent}    {Colors.DIM}Response: {response_preview}{Colors.RESET}",
+                file=file,
+            )
+        else:
+            print(f"{indent}    Response: {response_preview}", file=file)
 
 
 def print_timeline(
@@ -282,6 +369,7 @@ def format_trace(
     use_color: bool = False,
     show_duration: bool = True,
     show_path: bool = False,
+    show_llm: bool = True,
 ) -> str:
     """Format an execution trace as a string.
 
@@ -292,6 +380,7 @@ def format_trace(
         use_color: Whether to include ANSI colors.
         show_duration: Whether to show execution duration.
         show_path: Whether to show full paths.
+        show_llm: Whether to show LLM prompt/response for LLM nodes.
 
     Returns:
         Formatted string representation of the trace.
@@ -303,6 +392,7 @@ def format_trace(
         use_color=use_color,
         show_duration=show_duration,
         show_path=show_path,
+        show_llm=show_llm,
     )
     return buffer.getvalue()
 
