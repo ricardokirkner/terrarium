@@ -218,6 +218,7 @@
             border-radius: 4px;
             transition: background 0.2s;
             position: relative;
+            user-select: none;
         }
 
         .tree-node:hover {
@@ -239,6 +240,25 @@
             left: -12px;
             color: var(--failure);
             font-size: 1.2rem;
+        }
+        
+        .breakpoint-indicator {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid var(--failure);
+            margin-right: 8px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .breakpoint-indicator.active {
+            background: var(--failure);
+        }
+        
+        .breakpoint-indicator:hover {
+            border-width: 3px;
         }
 
         .tree-node:hover {
@@ -614,7 +634,7 @@
                 <div class="empty-state">
                     <p>Click a node to view details</p>
                     <p style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
-                        💡 Right-click a node to toggle breakpoint
+                        💡 Click the circle (○) before a node to set a breakpoint
                     </p>
                 </div>
             </div>
@@ -1006,6 +1026,9 @@
                           data-index="${index}"
                           data-path="${exec.path_in_tree}">
                         <div class="node-content">
+                            <span class="breakpoint-indicator ${hasBreak ? 'active' : ''}" 
+                                  data-path="${exec.path_in_tree}" 
+                                  title="Click to toggle breakpoint"></span>
                             <div class="node-status ${exec.status}"></div>
                             <span class="node-name">${getNodeName(exec.path_in_tree)}</span>
                             <span class="node-type">[${exec.node_type}]</span>
@@ -1021,14 +1044,20 @@
             treeContainer.querySelectorAll('.tree-node').forEach(node => {
                 // Left click to select
                 node.addEventListener('click', (e) => {
+                    // Don't select if clicking on breakpoint indicator
+                    if (e.target.classList.contains('breakpoint-indicator')) {
+                        return;
+                    }
                     const index = parseInt(node.dataset.index);
                     selectNode(currentTrace.executions[index]);
                 });
-                
-                // Right click to toggle breakpoint
-                node.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    const nodePath = node.dataset.path;
+            });
+            
+            // Breakpoint indicator click handlers
+            treeContainer.querySelectorAll('.breakpoint-indicator').forEach(indicator => {
+                indicator.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const nodePath = indicator.dataset.path;
                     toggleBreakpoint(nodePath);
                 });
             });
