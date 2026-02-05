@@ -213,9 +213,32 @@
 
         /* Tree visualization */
         .tree-node {
-            padding: 0.25rem 0;
+            padding: 0.5rem;
             cursor: pointer;
             border-radius: 4px;
+            transition: background 0.2s;
+            position: relative;
+        }
+
+        .tree-node:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .tree-node.selected {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--accent);
+        }
+        
+        .tree-node.has-breakpoint {
+            border-left: 3px solid var(--failure);
+        }
+        
+        .tree-node.has-breakpoint::before {
+            content: '●';
+            position: absolute;
+            left: -12px;
+            color: var(--failure);
+            font-size: 1.2rem;
         }
 
         .tree-node:hover {
@@ -590,6 +613,9 @@
             <div id="node-details">
                 <div class="empty-state">
                     <p>Click a node to view details</p>
+                    <p style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
+                        💡 Right-click a node to toggle breakpoint
+                    </p>
                 </div>
             </div>
 
@@ -659,6 +685,7 @@
         let events = [];
         let currentMetrics = null;
         let isPaused = false;
+        let breakpoints = new Set(); // Set of node paths with breakpoints
 
         // DOM elements
         const statusEl = document.getElementById('connection-status');
@@ -970,12 +997,14 @@
                 const depth = getDepth(exec.path_in_tree);
                 const indent = depth * 24;
                 const isSelected = selectedNode && selectedNode.node_id === exec.node_id;
+                const hasBreak = hasBreakpoint(exec.path_in_tree);
                 const duration = exec.duration_ms > 0 ? formatDuration(exec.duration_ms) : '';
 
                 return `
-                    <div class="tree-node ${isSelected ? 'selected' : ''}"
+                    <div class="tree-node ${isSelected ? 'selected' : ''} ${hasBreak ? 'has-breakpoint' : ''}"
                           style="padding-left: ${indent}px"
-                          data-index="${index}">
+                          data-index="${index}"
+                          data-path="${exec.path_in_tree}">
                         <div class="node-content">
                             <div class="node-status ${exec.status}"></div>
                             <span class="node-name">${getNodeName(exec.path_in_tree)}</span>
@@ -990,9 +1019,17 @@
 
             // Add click handlers
             treeContainer.querySelectorAll('.tree-node').forEach(node => {
-                node.addEventListener('click', () => {
+                // Left click to select
+                node.addEventListener('click', (e) => {
                     const index = parseInt(node.dataset.index);
                     selectNode(currentTrace.executions[index]);
+                });
+                
+                // Right click to toggle breakpoint
+                node.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    const nodePath = node.dataset.path;
+                    toggleBreakpoint(nodePath);
                 });
             });
         }
@@ -1467,6 +1504,26 @@
             addEvent('debugger', 'Resumed execution');
         }
 
+        // Breakpoint management
+        function toggleBreakpoint(nodePath) {
+            if (breakpoints.has(nodePath)) {
+                // Remove breakpoint
+                breakpoints.delete(nodePath);
+                sendDebuggerCommand('clear_breakpoint', { node_path: nodePath });
+                addEvent('debugger', `Removed breakpoint at ${nodePath}`);
+            } else {
+                // Add breakpoint
+                breakpoints.add(nodePath);
+                sendDebuggerCommand('set_breakpoint', { node_path: nodePath });
+                addEvent('debugger', `Set breakpoint at ${nodePath}`);
+            }
+            renderTree(); // Re-render to show/hide breakpoint indicator
+        }
+
+        function hasBreakpoint(nodePath) {
+            return breakpoints.has(nodePath);
+        }
+
         // Start connection
         connect();
         updateMetrics();
@@ -1528,8 +1585,10 @@
         });
 
         btnClearBreakpoints.addEventListener('click', () => {
+            breakpoints.clear();
             sendDebuggerCommand('clear_all_breakpoints');
             addEvent('debugger', 'Cleared all breakpoints');
+            renderTree(); // Re-render to remove breakpoint indicators
         });
 
         // Enable buttons when connected
