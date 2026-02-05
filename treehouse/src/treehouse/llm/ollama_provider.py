@@ -167,7 +167,7 @@ class OllamaProvider(LLMProvider):
                 latency_ms=elapsed_ms,
                 raw_response=raw,
             )
-        except (KeyError, TypeError) as e:
+        except (KeyError, TypeError, AttributeError) as e:
             raise LLMResponseError(f"Failed to parse Ollama response: {e}") from e
 
     def estimate_cost(self, request: LLMRequest) -> float:

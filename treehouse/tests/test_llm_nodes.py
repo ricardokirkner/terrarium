@@ -483,3 +483,23 @@ class TestLLMExecutionData:
         assert d["cost"] == 0.001
         assert d["latency_ms"] == 150.0
         assert d["model"] == "test-model"
+
+
+class TestRunAsyncHelper:
+    """Tests for _run_async helper function."""
+
+    @pytest.mark.asyncio
+    async def test_run_async_from_event_loop(self):
+        """_run_async should use ThreadPoolExecutor when called from event loop."""
+        import asyncio
+
+        from treehouse.llm.nodes import _run_async
+
+        async def sample_coro():
+            await asyncio.sleep(0.001)
+            return "result"
+
+        # Call _run_async from within an async context (event loop running)
+        # This should trigger the ThreadPoolExecutor path
+        result = _run_async(sample_coro())
+        assert result == "result"
