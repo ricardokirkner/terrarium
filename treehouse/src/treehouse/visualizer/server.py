@@ -21,12 +21,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+from treehouse.metrics import calculate_metrics
+from treehouse.telemetry import ExecutionTrace
+from treehouse.visualizer.storage import TraceStorage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+TRACE_PAYLOAD = Body(...)
 
 
 @dataclass
@@ -58,6 +63,14 @@ class ConnectionManager:
                     "data": self.current_trace,
                 }
             )
+            metrics = _calculate_metrics_from_state(self.current_trace)
+            if metrics:
+                await websocket.send_json(
+                    {
+                        "type": "metrics_update",
+                        "data": metrics,
+                    }
+                )
 
     async def connect_agent(self, websocket: WebSocket) -> None:
         """Accept a new agent connection."""
@@ -110,13 +123,54 @@ class ConnectionManager:
             if self.current_trace:
                 self.current_trace["end_time"] = event.get("timestamp")
                 self.current_trace["status"] = event.get("status", "unknown")
+                _save_trace_state(self.current_trace)
 
         # Broadcast to all viewers
         await self.broadcast_to_viewers(event)
 
+        metrics = _calculate_metrics_from_state(self.current_trace)
+        if metrics:
+            await self.broadcast_to_viewers(
+                {
+                    "type": "metrics_update",
+                    "data": metrics,
+                }
+            )
+
+
+def _calculate_metrics_from_state(
+    trace_state: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not trace_state:
+        return None
+    try:
+        state = {
+            "trace_id": trace_state.get("trace_id"),
+            "tick_id": trace_state.get("tick_id", 0),
+            "start_time": trace_state.get("start_time"),
+            "end_time": trace_state.get("end_time"),
+            "status": trace_state.get("status", "running"),
+            "executions": trace_state.get("executions", []),
+            "metadata": trace_state.get("metadata", {}),
+        }
+        trace = ExecutionTrace.from_dict(state)
+        return calculate_metrics(trace)
+    except Exception:
+        logger.exception("Failed to calculate metrics")
+        return None
+
+
+def _save_trace_state(trace_state: dict[str, Any]) -> None:
+    try:
+        trace = ExecutionTrace.from_dict(trace_state)
+        storage.save_trace(trace)
+    except Exception:
+        logger.exception("Failed to save trace")
+
 
 # Global connection manager
 manager = ConnectionManager()
+storage = TraceStorage()
 
 
 @asynccontextmanager
@@ -144,6 +198,71 @@ async def health_check():
         "viewers": len(manager.viewers),
         "agents": len(manager.agents),
     }
+
+
+@app.get("/api/traces")
+async def list_traces(limit: int = 50, offset: int = 0):
+    """List stored traces."""
+    return {
+        "traces": storage.list_traces(limit=limit, offset=offset),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get("/api/traces/{trace_id}")
+async def get_trace(trace_id: str):
+    """Get a stored trace by ID."""
+    trace = storage.get_trace(trace_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return trace.to_dict()
+
+
+@app.get("/api/traces/{trace_id}/export")
+async def export_trace(trace_id: str):
+    """Export a stored trace as JSON."""
+    trace = storage.get_trace(trace_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return Response(content=trace.to_json(), media_type="application/json")
+
+
+@app.post("/api/traces")
+async def save_trace(payload: dict = TRACE_PAYLOAD):
+    """Save a trace from a JSON payload."""
+    try:
+        trace = ExecutionTrace.from_dict(payload)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid trace payload: {exc}"
+        ) from exc
+
+    storage.save_trace(trace)
+    return {"status": "saved", "trace_id": trace.trace_id}
+
+
+@app.post("/api/traces/import")
+async def import_trace(payload: dict = TRACE_PAYLOAD):
+    """Import a trace from JSON payload."""
+    try:
+        trace = ExecutionTrace.from_dict(payload)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid trace payload: {exc}"
+        ) from exc
+
+    storage.save_trace(trace)
+    return {"status": "imported", "trace_id": trace.trace_id}
+
+
+@app.delete("/api/traces/{trace_id}")
+async def delete_trace(trace_id: str):
+    """Delete a stored trace."""
+    deleted = storage.delete_trace(trace_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return {"status": "deleted", "trace_id": trace_id}
 
 
 @app.get("/", response_class=HTMLResponse)
