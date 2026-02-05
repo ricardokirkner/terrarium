@@ -81,12 +81,68 @@
             overflow-y: auto;
         }
 
+        .view-toggle {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .toggle-button {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .toggle-button.active {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+
         .details-panel {
             width: 400px;
             background: var(--bg-secondary);
             border-left: 1px solid var(--bg-tertiary);
             padding: 1rem;
             overflow-y: auto;
+        }
+
+        .metrics-panel {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--bg-tertiary);
+            padding: 1rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+        }
+
+        .metric-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.75rem;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
+        }
+
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .metric-subtext {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
         }
 
         .details-panel h2 {
@@ -155,6 +211,130 @@
             margin-left: auto;
         }
 
+        .timeline-view {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .timeline-header {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 0.75rem;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .timeline-scale {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .timeline-row {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .timeline-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: visible;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .timeline-label-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 140px;
+        }
+
+        .timeline-gap {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-left: 0.5rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 999px;
+            background: rgba(15, 52, 96, 0.6);
+            color: var(--text-secondary);
+            font-size: 0.65rem;
+        }
+
+        .timeline-track {
+            position: relative;
+            height: 22px;
+            background: var(--bg-secondary);
+            border-radius: 999px;
+            border: 1px solid var(--bg-tertiary);
+            overflow: visible;
+        }
+
+        .timeline-bar {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            padding: 0 0.4rem;
+            font-size: 0.65rem;
+            color: #0b0b0b;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: visible;
+            min-width: 3px;
+            z-index: 1;
+        }
+
+        .timeline-bar.instant {
+            min-width: 6px;
+            width: 6px;
+            padding: 0;
+            border-radius: 999px;
+        }
+
+        .timeline-bar-label {
+            position: absolute;
+            left: 0.4rem;
+            font-weight: 600;
+            pointer-events: none;
+        }
+
+        .timeline-bar-label.inside {
+            max-width: calc(100% - 0.8rem);
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .timeline-bar-label.outside {
+            left: calc(100% + 0.4rem);
+            color: var(--text-secondary);
+            font-weight: 500;
+            z-index: 2;
+        }
+
+        .timeline-gap-bar {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(15, 52, 96, 0.6);
+            border: 1px dashed rgba(99, 102, 241, 0.6);
+            border-radius: 999px;
+            z-index: 0;
+            pointer-events: auto;
+        }
+
+        .timeline-bar.success { background: rgba(74, 222, 128, 0.8); }
+        .timeline-bar.failure { background: rgba(248, 113, 113, 0.8); }
+        .timeline-bar.running { background: rgba(251, 191, 36, 0.8); }
+        .timeline-bar.idle { background: rgba(148, 163, 184, 0.6); }
+
         /* Details panel */
         .detail-section {
             margin-bottom: 1.5rem;
@@ -215,6 +395,79 @@
             border-radius: 4px;
         }
 
+        .trace-browser {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .trace-browser-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .trace-list {
+            background: var(--bg-primary);
+            border-radius: 4px;
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .trace-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            border-bottom: 1px solid var(--bg-tertiary);
+            padding: 0.5rem 0;
+        }
+
+        .trace-item:last-child {
+            border-bottom: none;
+        }
+
+        .trace-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .trace-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .trace-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .trace-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .trace-button {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .trace-button:hover {
+            border-color: var(--accent);
+        }
+
+        .trace-button.danger {
+            color: var(--failure);
+        }
+
         .event-item {
             padding: 0.25rem 0;
             border-bottom: 1px solid var(--bg-tertiary);
@@ -252,6 +505,10 @@
 
     <main>
         <div class="tree-panel">
+            <div class="view-toggle">
+                <button class="toggle-button active" id="view-tree">Tree</button>
+                <button class="toggle-button" id="view-timeline">Timeline</button>
+            </div>
             <div id="tree-container">
                 <div class="empty-state">
                     <p>Waiting for agent connection...</p>
@@ -276,8 +533,53 @@
                     <div class="empty-state">No events yet</div>
                 </div>
             </div>
+
+            <div class="detail-section" style="margin-top: 2rem;">
+                <div class="trace-browser">
+                    <div class="trace-browser-header">
+                        <h3>Saved Traces</h3>
+                        <div class="trace-actions">
+                            <button class="trace-button" id="export-trace">Export</button>
+                            <button class="trace-button" id="import-trace">Import</button>
+                            <button class="trace-button" id="refresh-traces">Refresh</button>
+                            <input type="file" id="import-file" accept="application/json" style="display:none" />
+                        </div>
+                    </div>
+                    <div id="trace-list" class="trace-list">
+                        <div class="empty-state">No saved traces</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
+
+    <section class="metrics-panel" id="metrics-panel">
+        <div class="metric-card">
+            <div class="metric-label">Trace</div>
+            <div class="metric-value" id="metric-trace">-</div>
+            <div class="metric-subtext" id="metric-status">Status: -</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Duration</div>
+            <div class="metric-value" id="metric-duration">-</div>
+            <div class="metric-subtext" id="metric-exec-duration">Execution: -</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Nodes</div>
+            <div class="metric-value" id="metric-nodes">-</div>
+            <div class="metric-subtext" id="metric-llm-calls">LLM calls: -</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Tokens</div>
+            <div class="metric-value" id="metric-tokens">-</div>
+            <div class="metric-subtext" id="metric-token-breakdown">Prompt/Completion</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Cost</div>
+            <div class="metric-value" id="metric-cost">-</div>
+            <div class="metric-subtext" id="metric-cost-breakdown">USD</div>
+        </div>
+    </section>
 
     <footer>
         Treehouse Visualizer v0.1.0
@@ -289,12 +591,30 @@
         let currentTrace = null;
         let selectedNode = null;
         let events = [];
+        let currentMetrics = null;
 
         // DOM elements
         const statusEl = document.getElementById('connection-status');
         const treeContainer = document.getElementById('tree-container');
         const nodeDetails = document.getElementById('node-details');
         const eventsLog = document.getElementById('events-log');
+        const traceList = document.getElementById('trace-list');
+        const refreshTracesButton = document.getElementById('refresh-traces');
+        const exportTraceButton = document.getElementById('export-trace');
+        const importTraceButton = document.getElementById('import-trace');
+        const importFileInput = document.getElementById('import-file');
+        const viewTreeButton = document.getElementById('view-tree');
+        const viewTimelineButton = document.getElementById('view-timeline');
+        const metricTrace = document.getElementById('metric-trace');
+        const metricStatus = document.getElementById('metric-status');
+        const metricDuration = document.getElementById('metric-duration');
+        const metricExecDuration = document.getElementById('metric-exec-duration');
+        const metricNodes = document.getElementById('metric-nodes');
+        const metricLlmCalls = document.getElementById('metric-llm-calls');
+        const metricTokens = document.getElementById('metric-tokens');
+        const metricTokenBreakdown = document.getElementById('metric-token-breakdown');
+        const metricCost = document.getElementById('metric-cost');
+        const metricCostBreakdown = document.getElementById('metric-cost-breakdown');
 
         // Connect to WebSocket
         function connect() {
@@ -344,6 +664,12 @@
                 case 'trace_state':
                     currentTrace = message.data;
                     renderTree();
+                    updateMetrics();
+                    break;
+
+                case 'metrics_update':
+                    currentMetrics = message.data;
+                    updateMetrics(currentMetrics);
                     break;
 
                 case 'trace_start':
@@ -355,12 +681,14 @@
                         status: 'running'
                     };
                     renderTree();
+                    updateMetrics();
                     break;
 
                 case 'node_execution':
                     if (currentTrace) {
                         currentTrace.executions.push(message.data);
                         renderTree();
+                        updateMetrics();
                     }
                     break;
 
@@ -369,6 +697,8 @@
                         currentTrace.end_time = message.timestamp;
                         currentTrace.status = message.status;
                         renderTree();
+                        updateMetrics();
+                        fetchTraces();
                     }
                     break;
             }
@@ -398,6 +728,136 @@
             `).join('');
         }
 
+        async function fetchTraces() {
+            try {
+                const response = await fetch('/api/traces?limit=50');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                renderTraceList(data.traces || []);
+            } catch (error) {
+                console.error('Failed to fetch traces:', error);
+                addEvent('error', 'Failed to fetch traces');
+            }
+        }
+
+        function renderTraceList(traces) {
+            if (!traces.length) {
+                traceList.innerHTML = '<div class="empty-state">No saved traces</div>';
+                return;
+            }
+
+            traceList.innerHTML = traces.map(trace => {
+                const status = trace.status || 'unknown';
+                const startTime = trace.start_time ? new Date(trace.start_time).toLocaleString() : 'n/a';
+                return `
+                    <div class="trace-item">
+                        <div class="trace-row">
+                            <div class="trace-title">Trace #${trace.tick_id}</div>
+                            <div class="trace-meta">${status}</div>
+                        </div>
+                        <div class="trace-row">
+                            <div class="trace-meta">${startTime}</div>
+                            <div class="trace-actions">
+                                <button class="trace-button" data-trace-id="${trace.trace_id}" data-action="load">Load</button>
+                                <button class="trace-button" data-trace-id="${trace.trace_id}" data-action="export">Export</button>
+                                <button class="trace-button danger" data-trace-id="${trace.trace_id}" data-action="delete">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            traceList.querySelectorAll('button[data-action]').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const traceId = button.dataset.traceId;
+                    const action = button.dataset.action;
+                    if (action === 'load') {
+                        await loadTrace(traceId);
+                    } else if (action === 'export') {
+                        await exportTrace(traceId);
+                    } else if (action === 'delete') {
+                        await deleteTrace(traceId);
+                    }
+                });
+            });
+        }
+
+        async function loadTrace(traceId) {
+            try {
+                const response = await fetch(`/api/traces/${traceId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                currentTrace = await response.json();
+                renderTree();
+                updateMetrics();
+                addEvent('system', `Loaded trace ${traceId.slice(0, 8)}`);
+            } catch (error) {
+                console.error('Failed to load trace:', error);
+                addEvent('error', 'Failed to load trace');
+            }
+        }
+
+        async function deleteTrace(traceId) {
+            try {
+                const response = await fetch(`/api/traces/${traceId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                addEvent('system', `Deleted trace ${traceId.slice(0, 8)}`);
+                fetchTraces();
+            } catch (error) {
+                console.error('Failed to delete trace:', error);
+                addEvent('error', 'Failed to delete trace');
+            }
+        }
+
+        async function exportTrace(traceId) {
+            try {
+                const response = await fetch(`/api/traces/${traceId}/export`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const json = await response.text();
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `trace-${traceId}.json`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                addEvent('system', `Exported trace ${traceId.slice(0, 8)}`);
+            } catch (error) {
+                console.error('Failed to export trace:', error);
+                addEvent('error', 'Failed to export trace');
+            }
+        }
+
+        async function importTraceFromFile(file) {
+            try {
+                const text = await file.text();
+                const payload = JSON.parse(text);
+                const response = await fetch('/api/traces/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const result = await response.json();
+                addEvent('system', `Imported trace ${result.trace_id.slice(0, 8)}`);
+                fetchTraces();
+            } catch (error) {
+                console.error('Failed to import trace:', error);
+                addEvent('error', 'Failed to import trace');
+            }
+        }
+
         // Render tree visualization
         function renderTree() {
             if (!currentTrace || !currentTrace.executions || currentTrace.executions.length === 0) {
@@ -412,7 +872,21 @@
                 return;
             }
 
-            const html = currentTrace.executions.map((exec, i) => {
+            if (currentView === 'timeline') {
+                treeContainer.innerHTML = renderTimeline(currentTrace);
+                treeContainer.querySelectorAll('.timeline-bar').forEach(bar => {
+                    bar.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        const index = parseInt(bar.dataset.index);
+                        selectNode(currentTrace.executions[index]);
+                    });
+                });
+                return;
+            }
+
+            const orderedExecutions = orderExecutionsTopDown(currentTrace.executions);
+            const html = orderedExecutions.map(({ execution, index }) => {
+                const exec = execution;
                 const depth = getDepth(exec.path_in_tree);
                 const indent = depth * 24;
                 const isSelected = selectedNode && selectedNode.node_id === exec.node_id;
@@ -420,8 +894,8 @@
 
                 return `
                     <div class="tree-node ${isSelected ? 'selected' : ''}"
-                         style="padding-left: ${indent}px"
-                         data-index="${i}">
+                          style="padding-left: ${indent}px"
+                          data-index="${index}">
                         <div class="node-content">
                             <div class="node-status ${exec.status}"></div>
                             <span class="node-name">${getNodeName(exec.path_in_tree)}</span>
@@ -536,6 +1010,37 @@
             nodeDetails.innerHTML = html;
         }
 
+        function updateMetrics(metricsData = null) {
+            const metrics = metricsData || calculateMetrics(currentTrace);
+            if (!metrics) {
+                metricTrace.textContent = '-';
+                metricStatus.textContent = 'Status: -';
+                metricDuration.textContent = '-';
+                metricExecDuration.textContent = 'Execution: -';
+                metricNodes.textContent = '-';
+                metricLlmCalls.textContent = 'LLM calls: -';
+                metricTokens.textContent = '-';
+                metricTokenBreakdown.textContent = 'Prompt/Completion';
+                metricCost.textContent = '-';
+                metricCostBreakdown.textContent = 'USD';
+                return;
+            }
+
+            metricTrace.textContent = `Trace #${metrics.tick_id}`;
+            metricStatus.textContent = `Status: ${metrics.status}`;
+            metricDuration.textContent = formatDuration(metrics.total_duration_ms);
+            metricExecDuration.textContent = `Execution: ${formatDuration(metrics.total_execution_duration_ms)}`;
+            metricNodes.textContent = `${metrics.node_count} nodes`;
+            metricLlmCalls.textContent = `LLM calls: ${metrics.llm_call_count}`;
+
+            const tokens = metrics.total_tokens;
+            metricTokens.textContent = `${tokens.total} tokens`;
+            metricTokenBreakdown.textContent = `${tokens.prompt} prompt / ${tokens.completion} completion`;
+
+            metricCost.textContent = formatCost(metrics.total_cost);
+            metricCostBreakdown.textContent = 'USD total';
+        }
+
         // Utility functions
         function getDepth(path) {
             if (!path) return 0;
@@ -557,6 +1062,294 @@
             return (ms / 1000).toFixed(2) + 's';
         }
 
+        function formatCost(cost) {
+            if (!cost || cost === 0) return 'free';
+            if (cost < 0.01) return '$' + cost.toFixed(4);
+            return '$' + cost.toFixed(2);
+        }
+
+        function calculateMetrics(trace) {
+            if (!trace || !Array.isArray(trace.executions)) {
+                return null;
+            }
+
+            const executions = trace.executions;
+            const nodeCount = executions.length;
+            let totalExecutionDuration = 0;
+            let llmCallCount = 0;
+            let totalCost = 0;
+            const tokens = { prompt: 0, completion: 0, total: 0 };
+
+            executions.forEach((execution) => {
+                totalExecutionDuration += execution.duration_ms || 0;
+
+                const hasLlm = execution.llm_prompt || execution.llm_tokens || execution.llm_cost || execution.llm_model;
+                if (hasLlm) {
+                    llmCallCount += 1;
+                }
+
+                if (execution.llm_tokens) {
+                    tokens.prompt += execution.llm_tokens.prompt || 0;
+                    tokens.completion += execution.llm_tokens.completion || 0;
+                    tokens.total += execution.llm_tokens.total || 0;
+                }
+
+                if (execution.llm_cost) {
+                    totalCost += execution.llm_cost;
+                }
+            });
+
+            let totalDuration = totalExecutionDuration;
+            if (trace.start_time && trace.end_time) {
+                const start = new Date(trace.start_time);
+                const end = new Date(trace.end_time);
+                const durationMs = end - start;
+                if (!Number.isNaN(durationMs)) {
+                    totalDuration = durationMs;
+                }
+            }
+
+            return {
+                trace_id: trace.trace_id || null,
+                tick_id: trace.tick_id || 0,
+                status: trace.status || 'unknown',
+                node_count: nodeCount,
+                llm_call_count: llmCallCount,
+                total_duration_ms: totalDuration,
+                total_execution_duration_ms: totalExecutionDuration,
+                total_tokens: tokens,
+                total_cost: totalCost,
+            };
+        }
+
+        function orderExecutionsTopDown(executions) {
+            const parentOrder = new Map();
+            let parentCounter = 0;
+            const siblingOrder = new Map();
+
+            executions.forEach((execution) => {
+                const parentPath = getParentPath(execution.path_in_tree || '');
+                if (!parentOrder.has(parentPath)) {
+                    parentOrder.set(parentPath, parentCounter);
+                    parentCounter += 1;
+                }
+
+                const siblingKey = `${parentPath}/${getNodeName(execution.path_in_tree || '')}`;
+                if (!siblingOrder.has(siblingKey)) {
+                    siblingOrder.set(siblingKey, siblingOrder.size);
+                }
+            });
+
+            return executions.map((execution, index) => {
+                const path = execution.path_in_tree || '';
+                const parentPath = getParentPath(path);
+                const siblingIndex = getSegmentIndex(path);
+                const siblingKey = `${parentPath}/${getNodeName(path)}`;
+                return {
+                    execution,
+                    index,
+                    depth: getDepth(path),
+                    path,
+                    parentRank: parentOrder.get(parentPath) ?? 0,
+                    siblingRank: siblingIndex ?? (siblingOrder.get(siblingKey) ?? 0),
+                };
+            }).sort((a, b) => {
+                if (a.depth !== b.depth) {
+                    return a.depth - b.depth;
+                }
+                if (a.parentRank !== b.parentRank) {
+                    return a.parentRank - b.parentRank;
+                }
+                if (a.siblingRank !== b.siblingRank) {
+                    return a.siblingRank - b.siblingRank;
+                }
+                return a.path.localeCompare(b.path);
+            });
+        }
+
+        function getParentPath(path) {
+            if (!path) return '';
+            const parts = path.split('/');
+            return parts.slice(0, -1).join('/');
+        }
+
+        function getSegmentIndex(path) {
+            if (!path) return null;
+            const segment = path.split('/').pop();
+            const match = segment.match(/\[(\d+)\]$/);
+            if (!match) {
+                return null;
+            }
+            return parseInt(match[1], 10);
+        }
+
+        function buildTimelineRows(trace) {
+            const executions = trace.executions || [];
+            const startTime = trace.start_time ? new Date(trace.start_time).getTime() : null;
+            let currentStart = 0;
+
+            return executions.map((execution, index) => {
+                const duration = execution.duration_ms || 0;
+                const depth = getDepth(execution.path_in_tree);
+                const execStart = execution.start_time ? new Date(execution.start_time).getTime() : null;
+                const execEnd = execution.timestamp ? new Date(execution.timestamp).getTime() : null;
+
+                if (!startTime) {
+                    const start = currentStart;
+                    const end = start + duration;
+                    currentStart = end;
+                    return {
+                        index,
+                        node_id: execution.node_id,
+                        path_in_tree: execution.path_in_tree,
+                        depth,
+                        status: execution.status,
+                        duration_ms: duration,
+                        start_ms: start,
+                        end_ms: end,
+                    };
+                }
+
+                let startMs = execStart ? Math.max(execStart - startTime, 0) : null;
+                let endMs = execEnd ? Math.max(execEnd - startTime, 0) : null;
+
+                if (startMs === null && endMs !== null) {
+                    startMs = Math.max(endMs - duration, 0);
+                }
+                if (endMs === null && startMs !== null) {
+                    endMs = startMs + duration;
+                }
+                if (startMs === null || endMs === null) {
+                    const start = currentStart;
+                    const end = start + duration;
+                    currentStart = end;
+                    startMs = start;
+                    endMs = end;
+                }
+                return {
+                    index,
+                    node_id: execution.node_id,
+                    path_in_tree: execution.path_in_tree,
+                    depth,
+                    status: execution.status,
+                    duration_ms: duration,
+                    start_ms: startMs,
+                    end_ms: endMs,
+                };
+            });
+        }
+
+        function assignTimelineLanes(rows) {
+            const sorted = [...rows].sort((a, b) => a.start_ms - b.start_ms);
+            const laneEnds = [];
+            const lanes = [];
+
+            const lanePaddingMs = 6;
+
+            sorted.forEach((row) => {
+                const effectiveEnd = row.duration_ms <= 0.5
+                    ? row.start_ms + lanePaddingMs
+                    : row.end_ms;
+                let laneIndex = laneEnds.findIndex((end) => row.start_ms >= end);
+                if (laneIndex === -1) {
+                    laneIndex = laneEnds.length;
+                    laneEnds.push(effectiveEnd);
+                    lanes.push([]);
+                } else {
+                    laneEnds[laneIndex] = effectiveEnd;
+                }
+
+                lanes[laneIndex].push(row);
+            });
+
+            return lanes;
+        }
+
+        function renderTimeline(trace) {
+            const rows = buildTimelineRows(trace);
+            const traceStart = trace.start_time ? new Date(trace.start_time).getTime() : null;
+            const traceEnd = trace.end_time ? new Date(trace.end_time).getTime() : null;
+            const maxEnd = rows.reduce((max, row) => Math.max(max, row.end_ms), 0);
+            const nowMs = traceStart ? Date.now() - traceStart : maxEnd;
+            const totalDuration = traceEnd && traceStart ? traceEnd - traceStart : Math.max(maxEnd, nowMs, 1);
+
+            const orderMap = new Map(
+                orderExecutionsTopDown(trace.executions || []).map((item, orderIndex) => [
+                    item.index,
+                    orderIndex,
+                ])
+            );
+
+            const rowsSorted = [...rows].sort((a, b) => {
+                const orderA = orderMap.get(a.index) ?? Number.MAX_SAFE_INTEGER;
+                const orderB = orderMap.get(b.index) ?? Number.MAX_SAFE_INTEGER;
+                if (orderA !== orderB) {
+                    return orderA - orderB;
+                }
+                return a.start_ms - b.start_ms;
+            });
+
+            const header = `
+                <div class="timeline-header">
+                    <div>Total: ${formatDuration(totalDuration)}</div>
+                    <div class="timeline-scale">
+                        <span>0</span>
+                        <span>${formatDuration(totalDuration / 2)}</span>
+                        <span>${formatDuration(totalDuration)}</span>
+                    </div>
+                </div>
+            `;
+
+            const html = rowsSorted.map((row, rowIndex) => {
+                const name = getNodeName(row.path_in_tree);
+                const prevRow = rowIndex > 0 ? rowsSorted[rowIndex - 1] : null;
+                const gapMs = prevRow ? Math.max(row.start_ms - prevRow.end_ms, 0) : 0;
+                const gapStart = prevRow ? prevRow.end_ms : 0;
+                const gapEnd = row.start_ms;
+                const rawWidth = (row.duration_ms / totalDuration) * 100;
+                const isInstant = row.duration_ms <= 0.5;
+                const width = Math.max(rawWidth, 1.5);
+                const left = Math.min((row.start_ms / totalDuration) * 100, 100);
+                const labelClass = width < 10 || isInstant
+                    ? 'timeline-bar-label outside'
+                    : 'timeline-bar-label inside';
+                const barClass = isInstant ? `timeline-bar ${row.status} instant` : `timeline-bar ${row.status}`;
+                const gapLabel = gapMs > 1
+                    ? `<span class="timeline-gap" title="Gap after ${getNodeName(prevRow.path_in_tree)}">gap ${formatDuration(gapMs)}</span>`
+                    : '';
+                const gapWidth = gapMs > 1 ? Math.max((gapMs / totalDuration) * 100, 0.5) : 0;
+                const gapLeft = gapMs > 1 ? Math.min((gapStart / totalDuration) * 100, 100) : 0;
+                const gapActive = gapMs > 1
+                    ? rows.filter((item) => item.start_ms < gapEnd && item.end_ms > gapStart)
+                        .map((item) => getNodeName(item.path_in_tree))
+                    : [];
+                const gapUnique = Array.from(new Set(gapActive));
+                const gapReason = gapUnique.length > 0
+                    ? `Active: ${gapUnique.join(', ')}`
+                    : 'Idle (no nodes active)';
+                const gapTitle = gapMs > 1
+                    ? `Gap ${formatDuration(gapMs)} between ${getNodeName(prevRow.path_in_tree)} and ${name}. ${gapReason}`
+                    : '';
+
+                return `
+                    <div class="timeline-row" data-index="${row.index}">
+                        <div class="timeline-label" title="${name}">
+                            <span class="timeline-label-name">${name}</span>
+                            ${gapLabel}
+                        </div>
+                        <div class="timeline-track">
+                            ${gapMs > 1 ? `<div class="timeline-gap-bar" style="width: ${gapWidth}%; left: ${gapLeft}%;" title="${gapTitle}"></div>` : ''}
+                            <div class="${barClass}" style="width: ${width}%; left: ${left}%;" data-index="${row.index}" title="${name}">
+                                <span class="${labelClass}">${name}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `<div class="timeline-view">${header}${html}</div>`;
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -565,6 +1358,47 @@
 
         // Start connection
         connect();
+        updateMetrics();
+        fetchTraces();
+
+        refreshTracesButton.addEventListener('click', () => {
+            fetchTraces();
+        });
+
+        let currentView = 'tree';
+        viewTreeButton.addEventListener('click', () => {
+            currentView = 'tree';
+            viewTreeButton.classList.add('active');
+            viewTimelineButton.classList.remove('active');
+            renderTree();
+        });
+
+        viewTimelineButton.addEventListener('click', () => {
+            currentView = 'timeline';
+            viewTimelineButton.classList.add('active');
+            viewTreeButton.classList.remove('active');
+            renderTree();
+        });
+
+        exportTraceButton.addEventListener('click', () => {
+            if (!currentTrace || !currentTrace.trace_id) {
+                addEvent('error', 'No trace selected to export');
+                return;
+            }
+            exportTrace(currentTrace.trace_id);
+        });
+
+        importTraceButton.addEventListener('click', () => {
+            importFileInput.click();
+        });
+
+        importFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                importTraceFromFile(file);
+            }
+            event.target.value = '';
+        });
     </script>
 </body>
 </html>
