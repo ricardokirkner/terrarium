@@ -367,3 +367,200 @@ def test_debugger_with_sequence():
 
     assert result == NodeStatus.SUCCESS
     assert all(action.executed for action in actions)
+
+
+@pytest.mark.asyncio
+async def test_async_tick_with_breakpoint():
+    """Test async tick hitting a breakpoint."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+    debugger.set_breakpoint("root")
+
+    state = State()
+
+    # Start execution in background (will pause at breakpoint)
+    task = asyncio.create_task(debugger.tick_async(state))
+
+    # Give it time to hit breakpoint
+    await asyncio.sleep(0.01)
+
+    # Should be paused
+    assert debugger.paused
+    assert len(commands_received) == 1
+    assert commands_received[0][0] == "paused"
+    assert commands_received[0][1]["reason"] == "breakpoint"
+    assert commands_received[0][1]["node_path"] == "root"
+    assert commands_received[0][1]["hit_count"] == 1
+
+    # Resume to complete
+    debugger.resume()
+    result = await task
+
+    assert result == NodeStatus.SUCCESS
+    assert action.executed
+
+
+@pytest.mark.asyncio
+async def test_async_tick_with_conditional_breakpoint_hit():
+    """Test conditional breakpoint that triggers."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+
+    # Breakpoint that triggers when state has "trigger" key
+    def condition(state):
+        return "trigger" in state
+
+    debugger.set_breakpoint("root", condition=condition)
+
+    state = State()
+    state["trigger"] = True
+
+    # Start execution
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+
+    # Should be paused
+    assert debugger.paused
+    assert len(commands_received) == 1
+    assert commands_received[0][1]["reason"] == "breakpoint"
+
+    debugger.resume()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_async_tick_with_conditional_breakpoint_no_hit():
+    """Test conditional breakpoint that doesn't trigger."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+
+    # Breakpoint that won't trigger
+    def condition(state):
+        return "trigger" in state
+
+    debugger.set_breakpoint("root", condition=condition)
+
+    state = State()
+    # Don't set "trigger" key
+
+    # Execute without pausing
+    result = await debugger.tick_async(state)
+
+    assert result == NodeStatus.SUCCESS
+    assert not debugger.paused
+    assert len(commands_received) == 0
+
+
+@pytest.mark.asyncio
+async def test_async_tick_with_failing_condition():
+    """Test breakpoint with condition that raises exception."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    # Condition that raises exception
+    def bad_condition(state):
+        raise ValueError("boom")
+
+    debugger.set_breakpoint("root", condition=bad_condition)
+
+    state = State()
+
+    # Should not pause when condition fails
+    result = await debugger.tick_async(state)
+
+    assert result == NodeStatus.SUCCESS
+    assert not debugger.paused
+
+
+@pytest.mark.asyncio
+async def test_async_tick_step_mode():
+    """Test step mode in async execution."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+
+    # Enable step mode
+    debugger.pause()
+    debugger.step()
+
+    state = State()
+
+    # Start execution
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+
+    # Should have paused after step
+    assert debugger.paused
+    assert len(commands_received) == 2  # manual pause + step pause
+    assert commands_received[1][0] == "paused"
+    assert commands_received[1][1]["reason"] == "step"
+
+    # Resume
+    debugger.resume()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_async_multiple_breakpoints():
+    """Test hitting multiple breakpoints in sequence."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree)
+
+    debugger.set_breakpoint("root")
+
+    state = State()
+
+    # First execution - hit breakpoint
+    task1 = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+    assert debugger.paused
+    debugger.resume()
+    await task1
+
+    # Reset tree for second execution
+    tree.reset()
+
+    # Second execution - hit same breakpoint again
+    task2 = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+    assert debugger.paused
+
+    # Check hit count incremented
+    bp = debugger.breakpoints["root"]
+    assert bp.hit_count == 2
+
+    debugger.resume()
+    await task2

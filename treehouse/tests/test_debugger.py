@@ -324,3 +324,196 @@ def test_send_sync_with_runtime_error(monkeypatch):
     client.send_sync({"type": "test"})
     assert len(client._send_queue) == 1
     assert client._send_queue[0]["type"] == "test"
+
+
+class MockCommandHandler:
+    """Mock command handler for testing."""
+
+    def __init__(self):
+        self.commands = []
+
+    def handle_command(self, command, data):
+        self.commands.append((command, data))
+
+
+class FakeWebSocketWithReceive(FakeWebSocket):
+    """WebSocket that can receive messages."""
+
+    def __init__(self):
+        super().__init__()
+        self.messages_to_receive = []
+        self.receive_index = 0
+
+    async def recv(self):
+        if self.receive_index < len(self.messages_to_receive):
+            msg = self.messages_to_receive[self.receive_index]
+            self.receive_index += 1
+            return msg
+        # Block forever to simulate waiting for messages
+        await asyncio.sleep(999)
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_handles_commands(monkeypatch):
+    """Test that receive loop processes incoming commands."""
+    fake_ws = FakeWebSocketWithReceive()
+    fake_ws.messages_to_receive = [
+        json.dumps({"type": "pause", "data": {}}),
+        json.dumps({"type": "resume", "data": {}}),
+    ]
+
+    async def fake_connect(url):
+        return fake_ws
+
+    monkeypatch.setitem(
+        sys.modules,
+        "websockets",
+        SimpleNamespace(connect=fake_connect),
+    )
+
+    handler = MockCommandHandler()
+    client = DebuggerClient(url="ws://example", command_handler=handler)
+
+    await client.connect()
+    assert client._receive_task is not None
+
+    # Give receive loop time to process messages
+    await asyncio.sleep(0.05)
+
+    # Should have processed both commands
+    assert len(handler.commands) == 2
+    assert handler.commands[0] == ("pause", {})
+    assert handler.commands[1] == ("resume", {})
+
+    await client.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_handles_command_errors(monkeypatch):
+    """Test that receive loop continues after command handler errors."""
+    fake_ws = FakeWebSocketWithReceive()
+
+    # First command will fail, second should still process
+    fake_ws.messages_to_receive = [
+        json.dumps({"type": "bad_command", "data": {}}),
+        json.dumps({"type": "good_command", "data": {}}),
+    ]
+
+    async def fake_connect(url):
+        return fake_ws
+
+    monkeypatch.setitem(
+        sys.modules,
+        "websockets",
+        SimpleNamespace(connect=fake_connect),
+    )
+
+    class FailingHandler:
+        def __init__(self):
+            self.commands = []
+
+        def handle_command(self, command, data):
+            if command == "bad_command":
+                raise ValueError("bad command")
+            self.commands.append((command, data))
+
+    handler = FailingHandler()
+    client = DebuggerClient(url="ws://example", command_handler=handler)
+
+    await client.connect()
+
+    # Give receive loop time to process
+    await asyncio.sleep(0.05)
+
+    # Should have processed the good command despite the error
+    assert len(handler.commands) == 1
+    assert handler.commands[0] == ("good_command", {})
+
+    await client.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_stops_on_disconnect(monkeypatch):
+    """Test that receive loop stops when disconnected."""
+    fake_ws = FakeWebSocketWithReceive()
+
+    async def fake_connect(url):
+        return fake_ws
+
+    monkeypatch.setitem(
+        sys.modules,
+        "websockets",
+        SimpleNamespace(connect=fake_connect),
+    )
+
+    handler = MockCommandHandler()
+    client = DebuggerClient(url="ws://example", command_handler=handler)
+
+    await client.connect()
+    assert client._receive_task is not None
+    task = client._receive_task
+
+    # Disconnect should cancel the receive task
+    await client.disconnect()
+
+    assert task.cancelled() or task.done()
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_no_start_without_handler(monkeypatch):
+    """Test that receive loop doesn't start without command handler."""
+    fake_ws = FakeWebSocket()
+
+    async def fake_connect(url):
+        return fake_ws
+
+    monkeypatch.setitem(
+        sys.modules,
+        "websockets",
+        SimpleNamespace(connect=fake_connect),
+    )
+
+    # No command handler provided
+    client = DebuggerClient(url="ws://example")
+
+    await client.connect()
+
+    # Should not have started receive task
+    assert client._receive_task is None
+
+    await client.disconnect()
+
+
+class FakeWebSocketWithError(FakeWebSocket):
+    """WebSocket that raises errors on recv."""
+
+    async def recv(self):
+        raise RuntimeError("recv error")
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_handles_recv_errors(monkeypatch):
+    """Test that receive loop handles recv errors gracefully."""
+    fake_ws = FakeWebSocketWithError()
+
+    async def fake_connect(url):
+        return fake_ws
+
+    monkeypatch.setitem(
+        sys.modules,
+        "websockets",
+        SimpleNamespace(connect=fake_connect),
+    )
+
+    handler = MockCommandHandler()
+    client = DebuggerClient(url="ws://example", command_handler=handler)
+
+    await client.connect()
+
+    # Give receive loop time to encounter error
+    await asyncio.sleep(0.05)
+
+    # Should have marked as disconnected
+    assert not client.connected
+
+    await client.disconnect()

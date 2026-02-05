@@ -430,3 +430,29 @@ def test_index_returns_fallback_when_no_static(monkeypatch):
         assert response.status_code == 200
         assert "Treehouse Visualizer" in response.text
         assert "Static files not found" in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_broadcast_to_agents_cleanup():
+    """Test that broadcast_to_agents removes failed agents."""
+    manager = server.ConnectionManager()
+
+    class GoodAgent:
+        def __init__(self) -> None:
+            self.messages = []
+
+        async def send_json(self, message: dict) -> None:
+            self.messages.append(message)
+
+    class BadAgent:
+        async def send_json(self, _message: dict) -> None:
+            raise RuntimeError("boom")
+
+    good = GoodAgent()
+    bad = BadAgent()
+    manager.agents = cast(list, [good, bad])
+
+    await manager.broadcast_to_agents({"type": "test"})
+    assert good in manager.agents
+    assert bad not in manager.agents
