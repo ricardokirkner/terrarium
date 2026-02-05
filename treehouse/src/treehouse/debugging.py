@@ -209,19 +209,75 @@ class DebuggerTree:
 
         This method checks for breakpoints before executing each tick.
 
+        Note: Breakpoints are checked BEFORE each tick. If you set a breakpoint
+        on a specific node path, execution will pause before the tick that
+        contains that node. This is because Vivarium executes trees synchronously
+        and we cannot interrupt mid-tick.
+
         Args:
             state: The current state to pass through the tree.
 
         Returns:
             The status returned by the tree.
         """
-        # Check breakpoint before executing the tree
-        await self._check_breakpoint("root", state)
+        # Check if any breakpoints match this execution
+        # Since we can't pause mid-tick, we check all breakpoints before the tick
+        should_pause = False
+        breakpoint_info = None
+
+        for node_path, bp in self.breakpoints.items():
+            # Check if this breakpoint's condition is met
+            if bp.condition is None:
+                should_pause = True
+                breakpoint_info = (node_path, bp)
+                break
+            else:
+                try:
+                    if bp.condition(state):
+                        should_pause = True
+                        breakpoint_info = (node_path, bp)
+                        break
+                except Exception:
+                    pass
+
+        if should_pause and breakpoint_info:
+            node_path, bp = breakpoint_info
+            bp.hit_count += 1
+            self._paused = True
+            self._resume_event.clear()
+
+            if self._command_handler:
+                self._command_handler(
+                    "paused",
+                    {
+                        "reason": "breakpoint",
+                        "node_path": node_path,
+                        "hit_count": bp.hit_count,
+                        "note": "Paused before tick containing this node",
+                    },
+                )
+
+            # Wait for resume
+            await self._resume_event.wait()
+
+        # Check for step mode
+        if self._step_mode:
+            self._paused = True
+            self._resume_event.clear()
+            self._step_mode = False
+
+            if self._command_handler:
+                self._command_handler(
+                    "paused",
+                    {
+                        "reason": "step",
+                        "node_path": "tick",
+                    },
+                )
+
+            await self._resume_event.wait()
 
         # Execute the tree
-        # Note: This is a simplified implementation. For full breakpoint support
-        # on every node, we would need to modify Vivarium's node execution to
-        # call _check_breakpoint before each node's tick.
         return self.tree.tick(state)
 
     def tick(self, state: Any) -> NodeStatus:

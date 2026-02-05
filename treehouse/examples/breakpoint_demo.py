@@ -3,6 +3,17 @@
 This example shows how to use the DebuggerTree with breakpoints
 to pause and step through behavior tree execution.
 
+IMPORTANT LIMITATION:
+The current implementation checks breakpoints at the TICK level (before
+each tree.tick() call), not at individual node level. This means:
+- Breakpoints pause BEFORE the tick that contains that node
+- You can step through ticks, not individual nodes
+- To pause at specific nodes, you need to structure your tree with
+  multiple ticks or use manual pause/resume
+
+For per-node breakpoints, the tree would need to be async-aware at
+the Vivarium level (future enhancement).
+
 Usage:
     # Terminal 1: Start the visualizer
     make visualizer
@@ -11,9 +22,9 @@ Usage:
     python examples/breakpoint_demo.py
 
     # In browser: http://localhost:8000
-    # - Right-click on nodes to set breakpoints (red dot will appear)
+    # - Click the circles (○) before nodes to set breakpoints
     # - Click Pause/Resume/Step buttons to control execution
-    # - Watch execution pause at breakpoints
+    # - Breakpoints currently work at tick boundaries
 """
 
 import asyncio
@@ -95,31 +106,41 @@ async def main():
     print("(Set breakpoints in the browser now!)")
     await asyncio.sleep(2)
 
-    # Run multiple ticks to show breakpoint behavior
-    for tick in range(3):
+    # Run multiple ticks to demonstrate pause/resume/step
+    print("\nNOTE: Breakpoints work at TICK boundaries (not individual nodes)")
+    print("Set breakpoint on 'initialize' to pause before Tick 1")
+    print("Use Step button to execute one tick at a time")
+    print()
+
+    for tick in range(5):
         print(f"\n--- Tick {tick + 1} ---")
 
         state = State()
         state["tick"] = tick + 1
 
-        # Execute with async tick to support breakpoints
+        # Check if we should break at "root" (start of tick)
+        # This demonstrates tick-level breakpoints
+        if "root" in debugger_tree.breakpoints:
+            print("  Breakpoint at root - execution will pause before this tick")
+
+        # Execute with async tick to support pause/resume
         result = await debugger_tree.tick_async(state)
 
-        print(f"Result: {result}")
+        print(f"  Result: {result}")
 
         # Get trace
         traces = collector.get_traces()
         if traces:
             trace = traces[-1]
-            print(f"Trace ID: {trace.trace_id}")
-            print(f"Executions: {len(trace.executions)}")
+            print(f"  Trace ID: {trace.trace_id[:8]}...")
+            print(f"  Executions: {len(trace.executions)} nodes")
 
         # Reset tree for next tick
         tree.reset()
 
-        # Wait a bit between ticks
-        if tick < 2:
-            await asyncio.sleep(1)
+        # Small delay between ticks
+        if tick < 4:
+            await asyncio.sleep(0.5)
 
     print("\n✅ Demo complete!")
     print("Check the visualizer for the execution traces.")
