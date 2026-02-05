@@ -46,6 +46,7 @@ class NodeExecution:
     timestamp: datetime
     status: str
     duration_ms: float
+    start_time: datetime | None = None
     # Optional LLM fields
     llm_prompt: str | None = None
     llm_response: str | None = None
@@ -81,6 +82,7 @@ class NodeExecution:
             "node_name": self.node_name,
             "node_type": self.node_type,
             "path_in_tree": self.path_in_tree,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
             "timestamp": self.timestamp.isoformat(),
             "status": self.status,
             "duration_ms": self.duration_ms,
@@ -108,6 +110,11 @@ class NodeExecution:
             node_name=data["node_name"],
             node_type=data["node_type"],
             path_in_tree=data["path_in_tree"],
+            start_time=(
+                datetime.fromisoformat(data["start_time"])
+                if data.get("start_time")
+                else None
+            ),
             timestamp=datetime.fromisoformat(data["timestamp"]),
             status=data["status"],
             duration_ms=data["duration_ms"],
@@ -313,6 +320,7 @@ class TraceCollector:
             node_name=end_event.node_id,
             node_type=end_event.node_type,
             path_in_tree=end_event.path_in_tree,
+            start_time=start_event.timestamp if start_event else None,
             timestamp=end_event.timestamp,
             status=end_event.payload.get("result", "unknown"),
             duration_ms=duration_ms,
@@ -345,6 +353,7 @@ class TraceCollector:
             node_name=event.node_id,
             node_type=event.node_type,
             path_in_tree=event.path_in_tree,
+            start_time=event.timestamp,
             timestamp=event.timestamp,
             status=status,
             duration_ms=0.0,
