@@ -44,6 +44,7 @@ class DebuggerClient:
         url: str = "ws://localhost:8000/ws/agent",
         auto_reconnect: bool = True,
         reconnect_delay: float = 2.0,
+        command_handler: Any = None,
     ):
         """Initialize the debugger client.
 
@@ -51,14 +52,18 @@ class DebuggerClient:
             url: WebSocket URL of the visualizer server.
             auto_reconnect: Whether to automatically reconnect on disconnect.
             reconnect_delay: Seconds to wait before reconnecting.
+            command_handler: Optional handler for incoming debugger commands.
+                           Should have a handle_command(command, data) method.
         """
         self.url = url
         self.auto_reconnect = auto_reconnect
         self.reconnect_delay = reconnect_delay
+        self.command_handler = command_handler
         self._ws: Any = None  # websockets.WebSocketClientProtocol
         self._connected = False
         self._connecting = False
         self._send_queue: list[dict[str, Any]] = []
+        self._receive_task: Any = None
 
     @property
     def connected(self) -> bool:
@@ -87,6 +92,10 @@ class DebuggerClient:
                 event = self._send_queue.pop(0)
                 await self._send(event)
 
+            # Start receive loop if command handler is set
+            if self.command_handler:
+                self._receive_task = asyncio.create_task(self._receive_loop())
+
             return True
         except ImportError:
             logger.error(
@@ -103,6 +112,14 @@ class DebuggerClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the visualizer server."""
+        # Cancel receive task
+        if self._receive_task and not self._receive_task.done():
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
+
         if self._ws:
             try:
                 await self._ws.close()
@@ -111,6 +128,34 @@ class DebuggerClient:
             self._ws = None
         self._connected = False
         logger.info("Disconnected from visualizer")
+
+    async def _receive_loop(self) -> None:
+        """Background task to receive messages from the server."""
+        try:
+            while self._connected and self._ws:
+                try:
+                    message = await self._ws.recv()
+                    data = json.loads(message)
+
+                    # Handle incoming commands
+                    if data.get("type") and self.command_handler:
+                        command = data.get("type")
+                        payload = data.get("data", {})
+
+                        try:
+                            self.command_handler.handle_command(command, payload)
+                        except Exception as e:
+                            logger.error(f"Error handling command {command}: {e}")
+
+                except Exception as e:
+                    if self._connected:
+                        logger.warning(f"Error in receive loop: {e}")
+                        break
+        except asyncio.CancelledError:
+            logger.debug("Receive loop cancelled")
+        finally:
+            if self._connected:
+                self._connected = False
 
     async def __aenter__(self) -> DebuggerClient:
         """Async context manager entry."""

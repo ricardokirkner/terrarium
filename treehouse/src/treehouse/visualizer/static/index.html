@@ -40,11 +40,65 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--bg-tertiary);
+            gap: 2rem;
         }
 
         header h1 {
             font-size: 1.25rem;
             font-weight: 600;
+        }
+        
+        .debugger-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .control-button {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        
+        .control-button:hover:not(:disabled) {
+            background: var(--accent);
+        }
+        
+        .control-button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .control-button.danger {
+            border-color: var(--failure);
+        }
+        
+        .control-button.danger:hover:not(:disabled) {
+            background: var(--failure);
+        }
+        
+        .paused-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--running);
+            color: #000;
+            padding: 0.75rem;
+            text-align: center;
+            font-weight: 600;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .paused-banner.show {
+            display: block;
         }
 
         .status-badge {
@@ -496,8 +550,20 @@
     </style>
 </head>
 <body>
+    <div id="paused-banner" class="paused-banner">
+        ⏸ EXECUTION PAUSED
+    </div>
+    
     <header>
         <h1>Treehouse Visualizer</h1>
+        
+        <div class="debugger-controls">
+            <button id="btn-pause" class="control-button" disabled>⏸ Pause</button>
+            <button id="btn-resume" class="control-button" disabled>▶ Resume</button>
+            <button id="btn-step" class="control-button" disabled>⏭ Step</button>
+            <button id="btn-clear-breakpoints" class="control-button danger" disabled>✕ Clear Breakpoints</button>
+        </div>
+        
         <span id="connection-status" class="status-badge status-connecting">
             Connecting...
         </span>
@@ -592,6 +658,7 @@
         let selectedNode = null;
         let events = [];
         let currentMetrics = null;
+        let isPaused = false;
 
         // DOM elements
         const statusEl = document.getElementById('connection-status');
@@ -615,6 +682,11 @@
         const metricTokenBreakdown = document.getElementById('metric-token-breakdown');
         const metricCost = document.getElementById('metric-cost');
         const metricCostBreakdown = document.getElementById('metric-cost-breakdown');
+        const pausedBanner = document.getElementById('paused-banner');
+        const btnPause = document.getElementById('btn-pause');
+        const btnResume = document.getElementById('btn-resume');
+        const btnStep = document.getElementById('btn-step');
+        const btnClearBreakpoints = document.getElementById('btn-clear-breakpoints');
 
         // Connect to WebSocket
         function connect() {
@@ -700,6 +772,14 @@
                         updateMetrics();
                         fetchTraces();
                     }
+                    break;
+
+                case 'paused':
+                    handlePausedEvent(message.data || message);
+                    break;
+
+                case 'resumed':
+                    handleResumedEvent();
                     break;
             }
         }
@@ -1356,6 +1436,37 @@
             return div.innerHTML;
         }
 
+        // Debugger control functions
+        function sendDebuggerCommand(type, data = {}) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, data }));
+            }
+        }
+
+        function updateDebuggerState(paused) {
+            isPaused = paused;
+            
+            // Update button states
+            btnPause.disabled = paused;
+            btnResume.disabled = !paused;
+            btnStep.disabled = !paused;
+            
+            // Show/hide paused banner
+            pausedBanner.classList.toggle('show', paused);
+        }
+
+        function handlePausedEvent(data) {
+            updateDebuggerState(true);
+            const reason = data.reason || 'unknown';
+            const nodePath = data.node_path || data.current_node || '';
+            addEvent('debugger', `Paused: ${reason} ${nodePath ? `at ${nodePath}` : ''}`);
+        }
+
+        function handleResumedEvent() {
+            updateDebuggerState(false);
+            addEvent('debugger', 'Resumed execution');
+        }
+
         // Start connection
         connect();
         updateMetrics();
@@ -1399,6 +1510,36 @@
             }
             event.target.value = '';
         });
+
+        // Debugger control event listeners
+        btnPause.addEventListener('click', () => {
+            sendDebuggerCommand('pause');
+            addEvent('debugger', 'Sending pause command');
+        });
+
+        btnResume.addEventListener('click', () => {
+            sendDebuggerCommand('resume');
+            addEvent('debugger', 'Sending resume command');
+        });
+
+        btnStep.addEventListener('click', () => {
+            sendDebuggerCommand('step');
+            addEvent('debugger', 'Sending step command');
+        });
+
+        btnClearBreakpoints.addEventListener('click', () => {
+            sendDebuggerCommand('clear_all_breakpoints');
+            addEvent('debugger', 'Cleared all breakpoints');
+        });
+
+        // Enable buttons when connected
+        function updateConnectionState(connected) {
+            const hasTrace = connected && currentTrace;
+            btnPause.disabled = !hasTrace || isPaused;
+            btnResume.disabled = !hasTrace || !isPaused;
+            btnStep.disabled = !hasTrace || !isPaused;
+            btnClearBreakpoints.disabled = !hasTrace;
+        }
     </script>
 </body>
 </html>
