@@ -759,12 +759,14 @@
                 statusEl.className = 'status-badge status-connected';
                 statusEl.textContent = 'Connected';
                 addEvent('system', 'Connected to server');
+                updateConnectionState(true);
             };
 
             ws.onclose = () => {
                 statusEl.className = 'status-badge status-disconnected';
                 statusEl.textContent = 'Disconnected';
                 addEvent('system', 'Disconnected from server');
+                updateConnectionState(false);
                 // Reconnect after 2 seconds
                 setTimeout(connect, 2000);
             };
@@ -794,6 +796,7 @@
                     currentTrace = message.data;
                     renderTree();
                     updateMetrics();
+                    updateConnectionState(true);
                     break;
 
                 case 'metrics_update':
@@ -811,6 +814,7 @@
                     };
                     renderTree();
                     updateMetrics();
+                    updateConnectionState(true);
                     break;
 
                 case 'node_execution':
@@ -833,10 +837,12 @@
 
                 case 'paused':
                     handlePausedEvent(message.data || message);
+                    updateConnectionState(true);
                     break;
 
                 case 'resumed':
                     handleResumedEvent();
+                    updateConnectionState(true);
                     break;
             }
         }
