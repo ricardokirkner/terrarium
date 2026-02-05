@@ -640,6 +640,13 @@
                 </div>
             </div>
 
+            <div class="detail-section" style="margin-top: 2rem;" id="debugger-state-section" style="display: none;">
+                <h3>Debugger State</h3>
+                <div id="debugger-state" class="detail-value">
+                    <div class="empty-state">Not paused</div>
+                </div>
+            </div>
+
             <div class="detail-section" style="margin-top: 2rem;">
                 <h3>Recent Events</h3>
                 <div id="events-log" class="events-log">
@@ -735,6 +742,8 @@
         const btnResume = document.getElementById('btn-resume');
         const btnStep = document.getElementById('btn-step');
         const btnClearBreakpoints = document.getElementById('btn-clear-breakpoints');
+        const debuggerStateSection = document.getElementById('debugger-state-section');
+        const debuggerState = document.getElementById('debugger-state');
 
         // Connect to WebSocket
         function connect() {
@@ -1526,12 +1535,39 @@
             updateDebuggerState(true);
             const reason = data.reason || 'unknown';
             const nodePath = data.node_path || data.current_node || '';
+            const note = data.note || '';
             addEvent('debugger', `Paused: ${reason} ${nodePath ? `at ${nodePath}` : ''}`);
+            
+            // Show debugger state
+            const debuggerStateSection = document.getElementById('debugger-state-section');
+            const debuggerState = document.getElementById('debugger-state');
+            if (debuggerStateSection && debuggerState) {
+                debuggerStateSection.style.display = 'block';
+                let html = '<div style="margin-bottom: 0.5rem;"><strong>⏸ Execution Paused</strong></div>';
+                html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Reason: ${reason}</div>`;
+                if (nodePath) {
+                    html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Location: ${nodePath}</div>`;
+                }
+                if (note) {
+                    html += `<div style="font-size: 0.75rem; color: var(--text-secondary);">${note}</div>`;
+                }
+                if (data.hit_count) {
+                    html += `<div style="font-size: 0.75rem; margin-top: 0.5rem;">Hit count: ${data.hit_count}</div>`;
+                }
+                html += '<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--success);">Use Resume or Step buttons to continue</div>';
+                debuggerState.innerHTML = html;
+            }
         }
 
         function handleResumedEvent() {
             updateDebuggerState(false);
             addEvent('debugger', 'Resumed execution');
+            
+            // Hide debugger state
+            const debuggerStateSection = document.getElementById('debugger-state-section');
+            if (debuggerStateSection) {
+                debuggerStateSection.style.display = 'none';
+            }
         }
 
         // Breakpoint management

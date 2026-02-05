@@ -125,16 +125,17 @@ class DebuggerTree:
 
     def pause(self) -> None:
         """Pause execution at the next node."""
-        self._paused = True
-        self._resume_event.clear()
-        if self._command_handler:
-            self._command_handler(
-                "paused",
-                {
-                    "reason": "manual_pause",
-                    "current_node": self._current_node_path,
-                },
-            )
+        if not self._paused:
+            self._paused = True
+            self._resume_event.clear()
+            if self._command_handler:
+                self._command_handler(
+                    "paused",
+                    {
+                        "reason": "manual_pause",
+                        "current_node": self._current_node_path,
+                    },
+                )
 
     def resume(self) -> None:
         """Resume execution from a paused state."""

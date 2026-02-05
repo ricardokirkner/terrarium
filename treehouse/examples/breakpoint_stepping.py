@@ -77,7 +77,17 @@ async def main():
 
     tree = BehaviorTree(sequence, emitter=collector)
     debugger_tree = DebuggerTree(tree)
+
+    # Set up bidirectional communication
     debugger_client.command_handler = debugger_tree
+
+    # Set up callback to send debugger events back to visualizer
+    def send_debugger_event(event_type: str, data: dict):
+        """Send debugger events to visualizer."""
+        # Use sync send which queues the message
+        debugger_client.send_sync({"type": event_type, "data": data})
+
+    debugger_tree.set_command_handler(send_debugger_event)
 
     # Connect
     await debugger_client.connect()
