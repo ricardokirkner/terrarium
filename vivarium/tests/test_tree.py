@@ -309,8 +309,9 @@ class TestBehaviorTreeEventEmission:
         result = tree.tick(State())
 
         assert result == NodeStatus.SUCCESS
-        # Events: tick_started, action_invoked, action_completed, tick_completed
-        assert len(emitter.events) == 4
+        # Events: tick_started, node_entered, action_invoked, action_completed,
+        # node_exited, tick_completed
+        assert len(emitter.events) == 6
         assert isinstance(emitter.events[0], TickStarted)
         assert emitter.events[0].tick_id == 1
         assert isinstance(emitter.events[-1], TickCompleted)

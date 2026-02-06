@@ -15,9 +15,12 @@ either SUCCESS (condition is true) or FAILURE (condition is false).
 """
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
-from .context import ExecutionContext
-from .events import ConditionEvaluated, EventEmitter
+from .events import ConditionEvaluated, EventEmitter, NodeEntered, NodeExited
+
+if TYPE_CHECKING:
+    from .context import ExecutionContext
 from .node import Node
 from .status import NodeStatus
 
@@ -84,14 +87,30 @@ class Condition(Node):
         status = NodeStatus.SUCCESS if bool_result else NodeStatus.FAILURE
 
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, "Condition")
+            emitter.emit(
+                NodeEntered(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Condition",
+                    path_in_tree=ctx.path,
+                )
+            )
             emitter.emit(
                 ConditionEvaluated(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Condition",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                     result=bool_result,
+                )
+            )
+            emitter.emit(
+                NodeExited(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Condition",
+                    path_in_tree=ctx.path,
+                    result=status,
                 )
             )
 

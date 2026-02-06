@@ -143,7 +143,8 @@ class TestInverterEvents:
         child = SuccessAction("action")
         inverter = Inverter("inv", child)
         emitter = ListEventEmitter()
-        ctx = ExecutionContext(tick_id=1, path="root")
+        # Simulate what BehaviorTree does: create context with node's path
+        ctx = ExecutionContext(tick_id=1, path="root/inv")
 
         inverter.tick(State(), emitter, ctx)
 
@@ -162,9 +163,9 @@ class TestInverterEvents:
 
         inverter.tick(State(), emitter, ctx)
 
-        # Should have: Inverter entered, Action invoked, Action completed,
-        # Inverter exited
-        assert len(emitter.events) == 4
+        # Should have: Inverter entered, Action entered, Action invoked,
+        # Action completed, Action exited, Inverter exited
+        assert len(emitter.events) == 6
 
     def test_works_without_emitter(self):
         child = SuccessAction("action")
@@ -607,7 +608,8 @@ class TestDecoratorIntegration:
         child = SuccessAction("action")
         inverter = Inverter("inv", child)
         emitter = ListEventEmitter()
-        ctx = ExecutionContext(tick_id=1, path="root")
+        # Simulate what BehaviorTree does: context includes the node's path
+        ctx = ExecutionContext(tick_id=1, path="root/inv")
 
         inverter.tick(State(), emitter, ctx)
 

@@ -15,9 +15,18 @@ serve different purposes in the behavior tree structure.
 """
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
-from .context import ExecutionContext
-from .events import ActionCompleted, ActionInvoked, EventEmitter
+from .events import (
+    ActionCompleted,
+    ActionInvoked,
+    EventEmitter,
+    NodeEntered,
+    NodeExited,
+)
+
+if TYPE_CHECKING:
+    from .context import ExecutionContext
 from .node import Node
 from .status import NodeStatus
 
@@ -81,13 +90,20 @@ class Action(Node):
             The result of execute().
         """
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, "Action")
+            emitter.emit(
+                NodeEntered(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Action",
+                    path_in_tree=ctx.path,
+                )
+            )
             emitter.emit(
                 ActionInvoked(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Action",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                 )
             )
             result = self.execute(state)
@@ -96,7 +112,16 @@ class Action(Node):
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Action",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
+                    result=result,
+                )
+            )
+            emitter.emit(
+                NodeExited(
+                    tick_id=ctx.tick_id,
+                    node_id=self.name,
+                    node_type="Action",
+                    path_in_tree=ctx.path,
                     result=result,
                 )
             )
