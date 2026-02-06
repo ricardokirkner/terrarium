@@ -1,6 +1,7 @@
 from .actions import Action
 from .composites import Parallel, Selector, Sequence
 from .conditions import Condition
+from .decorators import Decorator, Inverter, Repeater, RetryUntilSuccess
 from .events import (
     ActionCompleted,
     ActionInvoked,
@@ -25,14 +26,18 @@ __all__ = [
     "BehaviorTree",
     "Condition",
     "ConditionEvaluated",
+    "Decorator",
     "Event",
     "EventEmitter",
+    "Inverter",
     "ListEventEmitter",
     "Node",
     "NodeEntered",
     "NodeExited",
     "NodeStatus",
     "Parallel",
+    "Repeater",
+    "RetryUntilSuccess",
     "Selector",
     "Sequence",
     "State",
