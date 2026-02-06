@@ -99,8 +99,7 @@ class DebuggerClient:
             return True
         except ImportError:
             logger.error(
-                "websockets package not installed. "
-                "Install with: pip install websockets"
+                "websockets package not installed. Install with: pip install websockets"
             )
             return False
         except Exception as e:
@@ -209,19 +208,19 @@ class DebuggerClient:
     def send_sync(self, event: dict[str, Any]) -> None:
         """Send an event synchronously (for non-async contexts).
 
-        Queues the event and sends it when possible.
+        If a running event loop is available, schedules the send as a
+        task. Otherwise queues the event to be sent on next connect or
+        flush.
 
         Args:
             event: Event dictionary to send.
         """
         if self._connected and self._ws:
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(self._send(event))
-                else:
-                    loop.run_until_complete(self._send(event))
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._send(event))
             except RuntimeError:
+                # No running loop — queue for later
                 self._send_queue.append(event)
         else:
             self._send_queue.append(event)

@@ -199,31 +199,15 @@ async def test_send_sync_uses_running_loop(monkeypatch):
     assert sent[0]["type"] == "loop"
 
 
-def test_send_sync_runs_in_event_loop(monkeypatch):
+def test_send_sync_queues_without_running_loop():
+    """Without a running event loop, send_sync queues the event."""
     client = DebuggerClient()
     client._connected = True
     client._ws = FakeWebSocket()
 
-    class DummyLoop:
-        def __init__(self) -> None:
-            self.ran = False
-
-        def is_running(self):
-            return False
-
-        def run_until_complete(self, _coro):
-            self.ran = True
-
-    dummy_loop = DummyLoop()
-
-    async def fake_send(event):
-        return True
-
-    monkeypatch.setattr(client, "_send", fake_send)
-    monkeypatch.setattr(asyncio, "get_event_loop", lambda: dummy_loop)
-
     client.send_sync({"type": "block"})
-    assert dummy_loop.ran is True
+    assert len(client._send_queue) == 1
+    assert client._send_queue[0]["type"] == "block"
 
 
 @pytest.mark.asyncio
@@ -317,9 +301,9 @@ def test_send_sync_with_runtime_error(monkeypatch):
     client._ws = object()
 
     def raise_runtime_error():
-        raise RuntimeError("no event loop")
+        raise RuntimeError("no running event loop")
 
-    monkeypatch.setattr(asyncio, "get_event_loop", raise_runtime_error)
+    monkeypatch.setattr(asyncio, "get_running_loop", raise_runtime_error)
 
     client.send_sync({"type": "test"})
     assert len(client._send_queue) == 1
