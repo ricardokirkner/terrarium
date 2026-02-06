@@ -184,6 +184,7 @@ async def test_send_sync_uses_running_loop(monkeypatch):
     client = DebuggerClient()
     client._connected = True
     client._ws = FakeWebSocket()
+    client._loop = asyncio.get_running_loop()  # Set event loop reference
 
     sent = []
 
@@ -194,7 +195,7 @@ async def test_send_sync_uses_running_loop(monkeypatch):
     monkeypatch.setattr(client, "_send", fake_send)
 
     client.send_sync({"type": "loop"})
-    await asyncio.sleep(0)
+    await asyncio.sleep(0.01)  # Give time for run_coroutine_threadsafe to complete
 
     assert sent[0]["type"] == "loop"
 
