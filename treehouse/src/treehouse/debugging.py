@@ -418,45 +418,54 @@ class DebuggerTree:
                 },
             )
 
-        # Pause before first tick if requested via pause_before_start
-        if self._first_tick and self._pause_before_start:
+        try:
+            # Pause before first tick if requested via pause_before_start
+            if self._first_tick and self._pause_before_start:
+                self._first_tick = False
+                self._pause_before_start = False  # Only pause once
+                logger.info("Paused before first tick (pause_before_start=True)")
+
+                if self._command_handler:
+                    self._command_handler(
+                        "paused",
+                        {
+                            "reason": "before_start",
+                            "note": (
+                                "Paused before first tick. Set breakpoints and "
+                                "click Resume or Step to begin."
+                            ),
+                        },
+                    )
+
+                await self._resume_event.wait()
+
             self._first_tick = False
-            self._pause_before_start = False  # Only pause once
-            logger.info("Paused before first tick (pause_before_start=True)")
 
+            # Check if manually paused
+            if self._paused and not self._step_mode and not self._pause_before_start:
+                logger.info("Waiting for resume (manual pause)")
+                await self._resume_event.wait()
+
+            # Build the debug emitter wrapping the tree's existing emitter
+            inner_emitter = getattr(self.tree, "_emitter", None)
+            debug_emitter = _DebugEmitter(self, inner=inner_emitter, state=state)
+
+            # Run the tick in a thread so blocking pauses don't stall the loop
+            result = await asyncio.to_thread(
+                self._run_tick_in_thread, state, debug_emitter
+            )
+
+            # Send tick_complete event after execution
             if self._command_handler:
-                self._command_handler(
-                    "paused",
-                    {
-                        "reason": "before_start",
-                        "note": (
-                            "Paused before first tick. Set breakpoints and "
-                            "click Resume or Step to begin."
-                        ),
-                    },
-                )
+                self._command_handler("tick_complete", {"status": str(result)})
 
-            await self._resume_event.wait()
-
-        self._first_tick = False
-
-        # Check if manually paused
-        if self._paused and not self._step_mode and not self._pause_before_start:
-            logger.info("Waiting for resume (manual pause)")
-            await self._resume_event.wait()
-
-        # Build the debug emitter wrapping the tree's existing emitter
-        inner_emitter = getattr(self.tree, "_emitter", None)
-        debug_emitter = _DebugEmitter(self, inner=inner_emitter, state=state)
-
-        # Run the tick in a thread so blocking pauses don't stall the loop
-        result = await asyncio.to_thread(self._run_tick_in_thread, state, debug_emitter)
-
-        # Send tick_complete event after execution
-        if self._command_handler:
-            self._command_handler("tick_complete", {"status": str(result)})
-
-        return result
+            return result
+        except asyncio.CancelledError:
+            # If cancelled (e.g., Ctrl+C), unblock any waiting threads and re-raise
+            logger.info("Tick cancelled, unblocking worker thread")
+            self._thread_resume.set()
+            self._resume_event.set()
+            raise
 
     def tick(self, state: Any) -> NodeStatus:
         """Execute one tick of the behavior tree synchronously.
