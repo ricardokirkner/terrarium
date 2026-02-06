@@ -825,8 +825,13 @@
                         const existingNode = currentTrace.executions.find(e => e.path_in_tree === nodePath);
                         
                         if (existingNode) {
-                            // Update existing node with execution data
+                            // Update existing node with execution data, but preserve original node_type and node_name
+                            // from tree structure (e.g., keep "CounterAction" not "Action")
+                            const originalType = existingNode.node_type;
+                            const originalName = existingNode.node_name;
                             Object.assign(existingNode, message.data);
+                            existingNode.node_type = originalType; // Restore specific class name
+                            existingNode.node_name = originalName; // Restore original name
                         } else {
                             // Only add if not already present (shouldn't happen with tree structure sent first)
                             currentTrace.executions.push(message.data);
