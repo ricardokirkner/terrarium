@@ -97,9 +97,10 @@ Events capture these transitions.
 ```text
 Tick
  ├─ Node entered
- │   ├─ Condition evaluated
- │   ├─ Action invoked
- │   └─ Result produced
+ │   ├─ Condition evaluated (detail)
+ │   ├─ Action invoked / completed (detail)
+ │   └─ Child nodes (recursive)
+ ├─ Node exited (with result)
  └─ Tick completed
 ```
 
@@ -122,13 +123,16 @@ Each tick has a unique identifier.
 
 - `node_entered`
 - `node_exited`
-- `node_result`
 
-Where `node_result` is one of:
+`node_exited` carries a `result` in its payload, one of:
 
 - `success`
 - `failure`
 - `running`
+
+All node types (composites, decorators, actions, conditions) emit both
+`node_entered` and `node_exited` events, providing a uniform lifecycle
+view for observers.
 
 ---
 
