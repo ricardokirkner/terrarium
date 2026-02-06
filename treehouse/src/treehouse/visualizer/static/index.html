@@ -698,6 +698,7 @@
         // State
         let ws = null;
         let currentTrace = null;
+        let treeStructureNodes = []; // Store tree structure separately for resetting on each tick
         let selectedNode = null;
         let events = [];
         let currentMetrics = null;
@@ -798,14 +799,17 @@
                     break;
 
                 case 'trace_start':
-                    // Preserve existing executions if we already have tree structure
-                    const existingExecutions = currentTrace && currentTrace.executions ? currentTrace.executions : [];
+                    // Reset executions to fresh tree structure for each new tick
+                    // This prevents accumulating duplicate nodes across ticks
+                    const freshExecutions = treeStructureNodes.length > 0 
+                        ? treeStructureNodes.map(node => ({...node, status: 'pending', start_time: null, timestamp: null, duration_ms: 0}))
+                        : [];
                     
                     currentTrace = {
                         trace_id: message.trace_id,
                         tick_id: message.tick_id,
                         start_time: message.timestamp,
-                        executions: existingExecutions,
+                        executions: freshExecutions,
                         status: 'running'
                     };
                     
@@ -816,7 +820,17 @@
 
                 case 'node_execution':
                     if (currentTrace) {
-                        currentTrace.executions.push(message.data);
+                        // Check if we already have this node (from tree structure or node_executing)
+                        const nodePath = message.data.path_in_tree || '';
+                        const existingNode = currentTrace.executions.find(e => e.path_in_tree === nodePath);
+                        
+                        if (existingNode) {
+                            // Update existing node with execution data
+                            Object.assign(existingNode, message.data);
+                        } else {
+                            // Only add if not already present (shouldn't happen with tree structure sent first)
+                            currentTrace.executions.push(message.data);
+                        }
                         renderTree();
                         updateMetrics();
                     }
@@ -1629,17 +1643,20 @@
             
             flattenTree(treeData);
             
+            // Store the tree structure for resetting on each tick
+            treeStructureNodes = executions;
+            
             // Initialize currentTrace if it doesn't exist
             if (!currentTrace) {
                 currentTrace = {
                     trace_id: 'structure-' + Date.now(),
                     tick_id: 0,
-                    executions: executions,
+                    executions: [...executions], // Use a copy
                     status: 'pending'
                 };
             } else {
-                // Update existing trace with structure
-                currentTrace.executions = executions;
+                // Update existing trace with fresh structure
+                currentTrace.executions = [...executions]; // Use a copy
             }
             
             renderTree();
@@ -1665,15 +1682,38 @@
             
             // Update or add this node to the current trace
             if (currentTrace) {
-                // Check if we already have this node in executions
-                const existingNode = currentTrace.executions.find(e => e.path_in_tree === nodePath);
+                // Find all nodes with this path (there should only be one, but check for duplicates)
+                let existingNode = null;
+                let duplicateIndices = [];
+                currentTrace.executions.forEach((e, index) => {
+                    if (e.path_in_tree === nodePath) {
+                        if (!existingNode) {
+                            existingNode = e;
+                        } else {
+                            duplicateIndices.push(index);
+                        }
+                    }
+                });
+                
+                // Remove any duplicates (shouldn't happen, but defensive)
+                if (duplicateIndices.length > 0) {
+                    console.warn(`Found ${duplicateIndices.length} duplicate nodes for path ${nodePath}, removing duplicates`);
+                    // Remove from highest index to lowest to avoid index shifting
+                    duplicateIndices.reverse().forEach(index => {
+                        currentTrace.executions.splice(index, 1);
+                    });
+                }
+                
                 if (existingNode) {
-                    // Update existing node status
+                    // Update existing node status and preserve the more specific type from tree structure
                     existingNode.status = 'running';
                     existingNode.start_time = new Date().toISOString();
                     existingNode.timestamp = new Date().toISOString();
+                    // Don't update node_type - keep the specific class name from tree structure
+                    // (e.g., keep "CounterAction" instead of overwriting with "Action")
                 } else {
-                    // Add a new execution entry for this node
+                    // This shouldn't happen if tree structure was sent, but add as fallback
+                    console.warn(`No existing node found for path ${nodePath}, adding new entry`);
                     currentTrace.executions.push({
                         node_id: nodeName,
                         node_name: nodeName,
