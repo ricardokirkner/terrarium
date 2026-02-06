@@ -44,6 +44,10 @@ class Event:
     - Reconstruct structure
     - Preserve causality
     - Correlate events across time
+
+    Subclasses may override the payload property to compute a dict from
+    their typed fields (e.g., result status). The base implementation
+    returns an empty dict.
     """
 
     event_type: str
@@ -52,7 +56,11 @@ class Event:
     node_type: str
     path_in_tree: str
     timestamp: datetime = field(default_factory=_now)
-    payload: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        """Event-specific data as a dict for serialization."""
+        return {}
 
 
 @dataclass(frozen=True)
@@ -72,7 +80,6 @@ class TickStarted(Event):
         object.__setattr__(self, "node_type", "")
         object.__setattr__(self, "path_in_tree", "")
         object.__setattr__(self, "timestamp", _now())
-        object.__setattr__(self, "payload", {})
 
 
 @dataclass(frozen=True)
@@ -117,7 +124,6 @@ class NodeEntered(Event):
         object.__setattr__(self, "path_in_tree", path_in_tree)
         object.__setattr__(self, "event_type", "node_entered")
         object.__setattr__(self, "timestamp", _now())
-        object.__setattr__(self, "payload", {})
 
 
 @dataclass(frozen=True)
@@ -201,7 +207,6 @@ class ActionInvoked(Event):
         object.__setattr__(self, "path_in_tree", path_in_tree)
         object.__setattr__(self, "event_type", "action_invoked")
         object.__setattr__(self, "timestamp", _now())
-        object.__setattr__(self, "payload", {})
 
 
 @dataclass(frozen=True)

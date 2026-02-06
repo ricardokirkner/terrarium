@@ -30,6 +30,7 @@ def test_event_has_required_fields():
     assert event.node_type == "Action"
     assert event.path_in_tree == "root/test_node"
     assert event.timestamp is not None
+    assert event.payload == {}
 
 
 def test_tick_started_event():
