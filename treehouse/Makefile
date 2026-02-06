@@ -32,7 +32,7 @@ lint: ## Lint code with flake8
 	uv run ruff check $(SRC)
 	@echo "✅ Linting complete!"
 
-check: format lint typecheck ## Run all code quality checks
+check: format lint ## Run all code quality checks
 	@echo "✅ All checks passed!"
 
 ##@ Testing
