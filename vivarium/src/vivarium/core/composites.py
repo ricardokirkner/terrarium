@@ -1,3 +1,5 @@
+from collections.abc import Sequence as SequenceType
+
 from .context import ExecutionContext
 from .events import EventEmitter, NodeEntered, NodeExited
 from .node import Node
@@ -30,15 +32,15 @@ class Sequence(Node):
         current_index: Index of the child currently being executed.
     """
 
-    def __init__(self, name: str, children: list[Node] | None = None):
+    def __init__(self, name: str, children: SequenceType[Node] | None = None):
         """Initialize the Sequence node.
 
         Args:
             name: A unique identifier for this node.
-            children: Optional list of child nodes to execute in order.
+            children: Optional sequence of child nodes to execute in order.
         """
         self.name = name
-        self.children: list[Node] = children if children is not None else []
+        self.children: list[Node] = list(children) if children is not None else []
         self.current_index: int = 0
 
     def tick(
@@ -135,15 +137,15 @@ class Selector(Node):
         current_index: Index of the child currently being executed.
     """
 
-    def __init__(self, name: str, children: list[Node] | None = None):
+    def __init__(self, name: str, children: SequenceType[Node] | None = None):
         """Initialize the Selector node.
 
         Args:
             name: A unique identifier for this node.
-            children: Optional list of child nodes to try in order.
+            children: Optional sequence of child nodes to try.
         """
         self.name = name
-        self.children: list[Node] = children if children is not None else []
+        self.children: list[Node] = list(children) if children is not None else []
         self.current_index: int = 0
 
     def tick(
@@ -250,7 +252,7 @@ class Parallel(Node):
     def __init__(
         self,
         name: str,
-        children: list[Node] | None = None,
+        children: SequenceType[Node] | None = None,
         success_threshold: int | None = None,
         failure_threshold: int | None = None,
     ):
@@ -258,14 +260,14 @@ class Parallel(Node):
 
         Args:
             name: A unique identifier for this node.
-            children: Optional list of child nodes to execute in parallel.
+            children: Optional sequence of child nodes to execute in parallel.
             success_threshold: Number of children that must succeed for SUCCESS.
                 Defaults to all children (None).
             failure_threshold: Number of children that must fail for FAILURE.
                 Defaults to all children (None).
         """
         self.name = name
-        self.children: list[Node] = children if children is not None else []
+        self.children: list[Node] = list(children) if children is not None else []
         self.success_threshold = success_threshold
         self.failure_threshold = failure_threshold
         self._child_statuses: list[NodeStatus | None] = [None] * len(self.children)
