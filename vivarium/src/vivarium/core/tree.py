@@ -54,8 +54,11 @@ class BehaviorTree:
         self._emit(TickStarted(tick_id=self.tick_count))
 
         if self._emitter is not None:
+            root_name = getattr(self.root, "name", type(self.root).__name__)
+            root_type = type(self.root).__name__
             ctx = ExecutionContext(tick_id=self.tick_count, path="")
-            result = self.root.tick(state, self._emitter, ctx)
+            root_ctx = ctx.child(root_name, root_type)
+            result = self.root.tick(state, self._emitter, root_ctx)
         else:
             result = self.root.tick(state)
 

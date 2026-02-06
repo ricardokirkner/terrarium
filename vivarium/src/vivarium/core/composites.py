@@ -63,26 +63,25 @@ class Sequence(Node):
             ValueError: If a child returns IDLE (invalid during execution).
         """
         # Set up context for this node if emitting
-        node_ctx = None
+        node_ctx = ctx
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, "Sequence")
             emitter.emit(
                 NodeEntered(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Sequence",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                 )
             )
 
         def emit_exit(result: NodeStatus) -> NodeStatus:
-            if emitter is not None and ctx is not None and node_ctx is not None:
+            if emitter is not None and ctx is not None:
                 emitter.emit(
                     NodeExited(
                         tick_id=ctx.tick_id,
                         node_id=self.name,
                         node_type="Sequence",
-                        path_in_tree=node_ctx.path,
+                        path_in_tree=ctx.path,
                         result=result,
                     )
                 )
@@ -91,16 +90,12 @@ class Sequence(Node):
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
 
-            # Create child context with index if emitting
+            # Create child context with position index
             child_ctx = None
             if emitter is not None and node_ctx is not None:
-                child_ctx = node_ctx.child(
-                    getattr(child, "name", type(child).__name__),
-                    type(child).__name__,
-                    self.current_index,
-                )
-                # Pass parent context so child builds path correctly
-                child_ctx = node_ctx
+                child_name = getattr(child, "name", type(child).__name__)
+                child_type = type(child).__name__
+                child_ctx = node_ctx.child(child_name, child_type, self.current_index)
 
             status = child.tick(state, emitter, child_ctx)
 
@@ -173,26 +168,25 @@ class Selector(Node):
             ValueError: If a child returns IDLE (invalid during execution).
         """
         # Set up context for this node if emitting
-        node_ctx = None
+        node_ctx = ctx
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, "Selector")
             emitter.emit(
                 NodeEntered(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Selector",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                 )
             )
 
         def emit_exit(result: NodeStatus) -> NodeStatus:
-            if emitter is not None and ctx is not None and node_ctx is not None:
+            if emitter is not None and ctx is not None:
                 emitter.emit(
                     NodeExited(
                         tick_id=ctx.tick_id,
                         node_id=self.name,
                         node_type="Selector",
-                        path_in_tree=node_ctx.path,
+                        path_in_tree=ctx.path,
                         result=result,
                     )
                 )
@@ -200,9 +194,14 @@ class Selector(Node):
 
         while self.current_index < len(self.children):
             child = self.children[self.current_index]
-            child_ctx = (
-                node_ctx if emitter is not None and node_ctx is not None else None
-            )
+
+            # Create child context with position index
+            child_ctx = None
+            if emitter is not None and node_ctx is not None:
+                child_name = getattr(child, "name", type(child).__name__)
+                child_type = type(child).__name__
+                child_ctx = node_ctx.child(child_name, child_type, self.current_index)
+
             status = child.tick(state, emitter, child_ctx)
 
             if status == NodeStatus.SUCCESS:
@@ -360,26 +359,25 @@ class Parallel(Node):
             ValueError: If a child returns IDLE (invalid during execution).
         """
         # Set up context for this node if emitting
-        node_ctx = None
+        node_ctx = ctx
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, "Parallel")
             emitter.emit(
                 NodeEntered(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type="Parallel",
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                 )
             )
 
         def emit_exit(result: NodeStatus) -> NodeStatus:
-            if emitter is not None and ctx is not None and node_ctx is not None:
+            if emitter is not None and ctx is not None:
                 emitter.emit(
                     NodeExited(
                         tick_id=ctx.tick_id,
                         node_id=self.name,
                         node_type="Parallel",
-                        path_in_tree=node_ctx.path,
+                        path_in_tree=ctx.path,
                         result=result,
                     )
                 )
@@ -395,7 +393,12 @@ class Parallel(Node):
         running_count = 0
 
         for i, child in enumerate(self.children):
-            status = self._tick_child(i, child, state, emitter, node_ctx)
+            child_ctx = None
+            if emitter is not None and node_ctx is not None:
+                child_name = getattr(child, "name", type(child).__name__)
+                child_type = type(child).__name__
+                child_ctx = node_ctx.child(child_name, child_type, i)
+            status = self._tick_child(i, child, state, emitter, child_ctx)
             if status == NodeStatus.SUCCESS:
                 success_count += 1
             elif status == NodeStatus.FAILURE:

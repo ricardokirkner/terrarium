@@ -13,7 +13,7 @@ class ExecutionContext:
 
     Attributes:
         tick_id: Current tick number.
-        path: Path to current node (e.g., "root/selector[0]/action[1]").
+        path: Path to current node (e.g., "selector/action@1").
     """
 
     tick_id: int
@@ -33,7 +33,7 @@ class ExecutionContext:
             A new ExecutionContext with the child's path.
         """
         if child_index is not None:
-            segment = f"{node_id}[{child_index}]"
+            segment = f"{node_id}@{child_index}"
         else:
             segment = node_id
 

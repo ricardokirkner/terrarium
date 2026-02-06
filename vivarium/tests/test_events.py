@@ -57,7 +57,7 @@ def test_node_entered_event():
         tick_id=1,
         node_id="attack",
         node_type="Action",
-        path_in_tree="root/selector[0]/attack",
+        path_in_tree="root/selector@0/attack",
     )
     assert event.event_type == "node_entered"
 
@@ -68,7 +68,7 @@ def test_node_exited_event():
         tick_id=1,
         node_id="attack",
         node_type="Action",
-        path_in_tree="root/selector[0]/attack",
+        path_in_tree="root/selector@0/attack",
         result=NodeStatus.SUCCESS,
     )
     assert event.event_type == "node_exited"
@@ -81,7 +81,7 @@ def test_condition_evaluated_event():
         tick_id=1,
         node_id="is_low_health",
         node_type="Condition",
-        path_in_tree="root/sequence[0]/is_low_health",
+        path_in_tree="root/sequence@0/is_low_health",
         result=True,
     )
     assert event.event_type == "condition_evaluated"
@@ -94,7 +94,7 @@ def test_action_invoked_event():
         tick_id=1,
         node_id="heal",
         node_type="Action",
-        path_in_tree="root/sequence[0]/heal",
+        path_in_tree="root/sequence@0/heal",
     )
     assert event.event_type == "action_invoked"
 
@@ -105,7 +105,7 @@ def test_action_completed_event():
         tick_id=1,
         node_id="heal",
         node_type="Action",
-        path_in_tree="root/sequence[0]/heal",
+        path_in_tree="root/sequence@0/heal",
         result=NodeStatus.SUCCESS,
     )
     assert event.event_type == "action_completed"

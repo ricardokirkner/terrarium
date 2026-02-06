@@ -42,29 +42,23 @@ class Decorator(Node):
         node_type: str,
         emitter: "EventEmitter | None",
         ctx: "ExecutionContext | None",
-    ) -> "ExecutionContext | None":
-        """Emit NodeEntered and return the node context.
+    ) -> None:
+        """Emit NodeEntered event.
 
         Args:
             node_type: Type name for this decorator (e.g., "Inverter").
             emitter: Optional event emitter.
-            ctx: Optional parent execution context.
-
-        Returns:
-            The node's execution context, or None if not emitting.
+            ctx: Optional execution context (already contains this node's path).
         """
         if emitter is not None and ctx is not None:
-            node_ctx = ctx.child(self.name, node_type)
             emitter.emit(
                 NodeEntered(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type=node_type,
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                 )
             )
-            return node_ctx
-        return None
 
     def _emit_exited(
         self,
@@ -72,7 +66,6 @@ class Decorator(Node):
         result: NodeStatus,
         emitter: "EventEmitter | None",
         ctx: "ExecutionContext | None",
-        node_ctx: "ExecutionContext | None",
     ) -> None:
         """Emit NodeExited event.
 
@@ -80,19 +73,38 @@ class Decorator(Node):
             node_type: Type name for this decorator.
             result: The final status of this node.
             emitter: Optional event emitter.
-            ctx: Optional parent execution context.
-            node_ctx: This node's execution context.
+            ctx: Optional execution context (already contains this node's path).
         """
-        if emitter is not None and ctx is not None and node_ctx is not None:
+        if emitter is not None and ctx is not None:
             emitter.emit(
                 NodeExited(
                     tick_id=ctx.tick_id,
                     node_id=self.name,
                     node_type=node_type,
-                    path_in_tree=node_ctx.path,
+                    path_in_tree=ctx.path,
                     result=result,
                 )
             )
+
+    def _child_ctx(
+        self,
+        emitter: "EventEmitter | None",
+        ctx: "ExecutionContext | None",
+    ) -> "ExecutionContext | None":
+        """Create context for the child node.
+
+        Args:
+            emitter: Optional event emitter.
+            ctx: This decorator's execution context.
+
+        Returns:
+            A child context with the child's name in the path, or None.
+        """
+        if emitter is not None and ctx is not None:
+            child_name = getattr(self.child, "name", type(self.child).__name__)
+            child_type = type(self.child).__name__
+            return ctx.child(child_name, child_type)
+        return None
 
     def reset(self):
         """Reset this node and the child to initial state."""
@@ -127,9 +139,9 @@ class Inverter(Decorator):
             SUCCESS if child returns FAILURE.
             RUNNING if child returns RUNNING.
         """
-        node_ctx = self._emit_entered("Inverter", emitter, ctx)
+        self._emit_entered("Inverter", emitter, ctx)
 
-        child_status = self.child.tick(state, emitter, node_ctx)
+        child_status = self.child.tick(state, emitter, self._child_ctx(emitter, ctx))
 
         if child_status == NodeStatus.SUCCESS:
             result = NodeStatus.FAILURE
@@ -138,7 +150,7 @@ class Inverter(Decorator):
         else:
             result = child_status
 
-        self._emit_exited("Inverter", result, emitter, ctx, node_ctx)
+        self._emit_exited("Inverter", result, emitter, ctx)
         return result
 
 
@@ -194,19 +206,19 @@ class Repeater(Decorator):
             RUNNING if the child is running or more repetitions remain.
             SUCCESS if max_repeats is reached.
         """
-        node_ctx = self._emit_entered("Repeater", emitter, ctx)
+        self._emit_entered("Repeater", emitter, ctx)
 
-        child_status = self.child.tick(state, emitter, node_ctx)
+        child_status = self.child.tick(state, emitter, self._child_ctx(emitter, ctx))
 
         if child_status == NodeStatus.FAILURE:
             result = NodeStatus.FAILURE
             self.current_count = 0
-            self._emit_exited("Repeater", result, emitter, ctx, node_ctx)
+            self._emit_exited("Repeater", result, emitter, ctx)
             return result
 
         if child_status == NodeStatus.RUNNING:
             result = NodeStatus.RUNNING
-            self._emit_exited("Repeater", result, emitter, ctx, node_ctx)
+            self._emit_exited("Repeater", result, emitter, ctx)
             return result
 
         # Child succeeded
@@ -216,12 +228,12 @@ class Repeater(Decorator):
         if self.max_repeats is not None and self.current_count >= self.max_repeats:
             result = NodeStatus.SUCCESS
             self.current_count = 0
-            self._emit_exited("Repeater", result, emitter, ctx, node_ctx)
+            self._emit_exited("Repeater", result, emitter, ctx)
             return result
 
         # More repetitions needed
         result = NodeStatus.RUNNING
-        self._emit_exited("Repeater", result, emitter, ctx, node_ctx)
+        self._emit_exited("Repeater", result, emitter, ctx)
         return result
 
     def reset(self):
@@ -278,19 +290,19 @@ class RetryUntilSuccess(Decorator):
                 if the child returned RUNNING.
             FAILURE if max_attempts is exhausted.
         """
-        node_ctx = self._emit_entered("RetryUntilSuccess", emitter, ctx)
+        self._emit_entered("RetryUntilSuccess", emitter, ctx)
 
-        child_status = self.child.tick(state, emitter, node_ctx)
+        child_status = self.child.tick(state, emitter, self._child_ctx(emitter, ctx))
 
         if child_status == NodeStatus.SUCCESS:
             result = NodeStatus.SUCCESS
             self.current_attempts = 0
-            self._emit_exited("RetryUntilSuccess", result, emitter, ctx, node_ctx)
+            self._emit_exited("RetryUntilSuccess", result, emitter, ctx)
             return result
 
         if child_status == NodeStatus.RUNNING:
             result = NodeStatus.RUNNING
-            self._emit_exited("RetryUntilSuccess", result, emitter, ctx, node_ctx)
+            self._emit_exited("RetryUntilSuccess", result, emitter, ctx)
             return result
 
         # Child failed
@@ -300,12 +312,12 @@ class RetryUntilSuccess(Decorator):
         if self.max_attempts is not None and self.current_attempts >= self.max_attempts:
             result = NodeStatus.FAILURE
             self.current_attempts = 0
-            self._emit_exited("RetryUntilSuccess", result, emitter, ctx, node_ctx)
+            self._emit_exited("RetryUntilSuccess", result, emitter, ctx)
             return result
 
         # More attempts available
         result = NodeStatus.RUNNING
-        self._emit_exited("RetryUntilSuccess", result, emitter, ctx, node_ctx)
+        self._emit_exited("RetryUntilSuccess", result, emitter, ctx)
         return result
 
     def reset(self):

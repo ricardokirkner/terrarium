@@ -1,8 +1,22 @@
 import pytest
 
-from vivarium.core import Node, NodeStatus, Parallel, Selector, Sequence
+from vivarium.core import (
+    BehaviorTree,
+    ListEventEmitter,
+    Node,
+    NodeStatus,
+    Parallel,
+    Selector,
+    Sequence,
+    State,
+)
 
-from .helpers import MockNode, OrderTrackingNode
+from .helpers import (
+    MockNode,
+    OrderTrackingNode,
+    SuccessAction,
+    TrueCondition,
+)
 
 
 class TestSequence:
@@ -786,3 +800,101 @@ class TestNestedComposites:
         assert action2._reset_called
         assert action3._reset_called
         assert action4._reset_called
+
+
+class TestCompositeEventPaths:
+    """Tests verifying that composites emit events with correct child paths."""
+
+    def test_sequence_children_have_indexed_paths(self):
+        """Children of a Sequence should have paths with positional indices."""
+        a = SuccessAction("a")
+        b = SuccessAction("b")
+        seq = Sequence("seq", [a, b])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(seq, emitter)
+
+        tree.tick(State())
+
+        action_events = [e for e in emitter.events if e.event_type == "action_invoked"]
+        assert len(action_events) == 2
+        assert action_events[0].path_in_tree == "seq/a@0"
+        assert action_events[1].path_in_tree == "seq/b@1"
+
+    def test_selector_children_have_indexed_paths(self):
+        """Children of a Selector should have paths with positional indices."""
+        a_fail = MockNode("a", NodeStatus.FAILURE)
+        b = SuccessAction("b")
+        sel = Selector("sel", [a_fail, b])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(sel, emitter)
+
+        tree.tick(State())
+
+        # a_fail doesn't emit events (MockNode), b does
+        action_events = [e for e in emitter.events if e.event_type == "action_invoked"]
+        assert len(action_events) == 1
+        assert action_events[0].path_in_tree == "sel/b@1"
+
+    def test_parallel_children_have_indexed_paths(self):
+        """Children of a Parallel should have paths with positional indices."""
+        a = SuccessAction("a")
+        b = SuccessAction("b")
+        par = Parallel("par", [a, b])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(par, emitter)
+
+        tree.tick(State())
+
+        action_events = [e for e in emitter.events if e.event_type == "action_invoked"]
+        assert len(action_events) == 2
+        assert action_events[0].path_in_tree == "par/a@0"
+        assert action_events[1].path_in_tree == "par/b@1"
+
+    def test_nested_composites_have_correct_paths(self):
+        """Nested composites produce correct hierarchical paths."""
+        action = SuccessAction("attack")
+        inner_seq = Sequence("inner", [action])
+        outer_sel = Selector("outer", [inner_seq])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(outer_sel, emitter)
+
+        tree.tick(State())
+
+        # Check the full path chain
+        entered_events = [e for e in emitter.events if e.event_type == "node_entered"]
+        # outer selector, inner sequence
+        assert entered_events[0].path_in_tree == "outer"
+        assert entered_events[1].path_in_tree == "outer/inner@0"
+
+        action_events = [e for e in emitter.events if e.event_type == "action_invoked"]
+        assert action_events[0].path_in_tree == "outer/inner@0/attack@0"
+
+    def test_condition_has_indexed_path(self):
+        """Conditions inside composites get indexed paths."""
+        cond = TrueCondition("check")
+        seq = Sequence("seq", [cond])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(seq, emitter)
+
+        tree.tick(State())
+
+        cond_events = [
+            e for e in emitter.events if e.event_type == "condition_evaluated"
+        ]
+        assert len(cond_events) == 1
+        assert cond_events[0].path_in_tree == "seq/check@0"
+
+    def test_same_name_children_have_distinct_paths(self):
+        """Children with the same name are distinguished by index."""
+        a1 = SuccessAction("action")
+        a2 = SuccessAction("action")
+        seq = Sequence("seq", [a1, a2])
+        emitter = ListEventEmitter()
+        tree = BehaviorTree(seq, emitter)
+
+        tree.tick(State())
+
+        action_events = [e for e in emitter.events if e.event_type == "action_invoked"]
+        assert len(action_events) == 2
+        assert action_events[0].path_in_tree == "seq/action@0"
+        assert action_events[1].path_in_tree == "seq/action@1"

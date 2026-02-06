@@ -259,7 +259,7 @@ The following example shows a single semantic event as it might be emitted by Vi
   "tick_id": "42",
   "node_id": "auth_check",
   "node_type": "Condition",
-  "path_in_tree": "root/selector[0]/condition[0]",
+  "path_in_tree": "selector/condition@0",
   "timestamp": "2026-01-30T13:41:22.531Z",
   "payload": {
     "result": false

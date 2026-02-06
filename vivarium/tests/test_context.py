@@ -20,7 +20,7 @@ def test_context_builds_path():
 
     # Child of composite has an index
     ctx3 = ctx2.child("check_health", "Condition", 0)
-    assert ctx3.path == "root/check_health[0]"
+    assert ctx3.path == "root/check_health@0"
 
 
 def test_context_tracks_composite_index():
@@ -29,10 +29,10 @@ def test_context_tracks_composite_index():
     # Root composite has no parent index
     ctx2 = ctx.child("seq", "Sequence")
     ctx3 = ctx2.child("child_a", "Action", 0)
-    assert ctx3.path == "seq/child_a[0]"
+    assert ctx3.path == "seq/child_a@0"
 
     ctx4 = ctx2.child("child_b", "Action", 1)
-    assert ctx4.path == "seq/child_b[1]"
+    assert ctx4.path == "seq/child_b@1"
 
 
 def test_context_is_immutable():
