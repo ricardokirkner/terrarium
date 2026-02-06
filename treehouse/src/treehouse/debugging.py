@@ -144,10 +144,20 @@ class _DebugEmitter:
 
         debugger._thread_resume.wait()
 
+        # If we resumed via step mode, skip the step check for this node
+        # to avoid double-pausing on the same node
+        if debugger._step_mode:
+            debugger._skip_step_for_current_node = True
+
     def _check_step_mode(self, node_path: str) -> None:
         """Block the tick thread if step mode is active."""
         debugger = self._debugger
         if not debugger._step_mode:
+            return
+
+        # Skip step check if we're resuming from a breakpoint on the same node
+        if debugger._skip_step_for_current_node:
+            debugger._skip_step_for_current_node = False
             return
 
         debugger._paused = True
@@ -196,6 +206,9 @@ class DebuggerTree:
         self._paused = pause_before_start
         self._pause_before_start = pause_before_start  # Track initial pause request
         self._step_mode = False
+        self._skip_step_for_current_node = (
+            False  # Skip step check when resuming from breakpoint
+        )
         self._resume_event = asyncio.Event()
         # Threading event used by the tick thread to block on pause
         self._thread_resume = threading.Event()
