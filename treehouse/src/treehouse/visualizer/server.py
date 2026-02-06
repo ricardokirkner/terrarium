@@ -122,6 +122,7 @@ class ConnectionManager:
     async def handle_agent_event(self, event: dict[str, Any]) -> None:
         """Process an event from an agent and broadcast to viewers."""
         event_type = event.get("type", "unknown")
+        logger.info(f"📡 Broadcasting {event_type} to {len(self.viewers)} viewer(s)")
 
         # Update current trace state
         if event_type == "trace_start":
@@ -345,8 +346,12 @@ async def agent_websocket(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             event = json.loads(data)
+            logger.info(
+                f"📥 Server received from agent: {event.get('type', 'unknown')}"
+            )
             await manager.handle_agent_event(event)
     except WebSocketDisconnect:
+        logger.info("Agent disconnected")
         manager.disconnect_agent(websocket)
     except Exception as e:
         logger.error(f"Agent error: {e}")
