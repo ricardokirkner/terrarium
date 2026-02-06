@@ -294,8 +294,11 @@ class DebuggerTree:
     def step(self) -> None:
         """Execute one step (one node) then pause again."""
         self._step_mode = True
+        self._paused = False  # Unpause to allow execution
         self._resume_event.set()
         self._thread_resume.set()
+        if self._command_handler:
+            self._command_handler("resumed", {"reason": "step"})
 
     def _extract_tree_structure(self, node: Node, path: str = "root") -> dict:
         """Extract the full tree structure for visualization.
@@ -341,7 +344,9 @@ class DebuggerTree:
         if not self._command_handler:
             return
 
-        tree_structure = self._extract_tree_structure(self.tree.root, "root")
+        # Use the same root path that Vivarium will use during execution
+        root_name = getattr(self.tree.root, "name", type(self.tree.root).__name__)
+        tree_structure = self._extract_tree_structure(self.tree.root, root_name)
         self._command_handler("tree_structure", tree_structure)
 
     def _run_tick_in_thread(self, state: Any, emitter: _DebugEmitter) -> NodeStatus:

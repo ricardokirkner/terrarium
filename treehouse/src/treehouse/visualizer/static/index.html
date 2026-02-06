@@ -1767,6 +1767,7 @@
                 addEvent('debugger', `Set breakpoint at ${nodePath}`);
             }
             renderTree(); // Re-render to show/hide breakpoint indicator
+            updateConnectionState(ws && ws.readyState === WebSocket.OPEN); // Update button states
         }
 
         function hasBreakpoint(nodePath) {
@@ -1838,6 +1839,7 @@
             sendDebuggerCommand('clear_all_breakpoints');
             addEvent('debugger', 'Cleared all breakpoints');
             renderTree(); // Re-render to remove breakpoint indicators
+            updateConnectionState(ws && ws.readyState === WebSocket.OPEN); // Update button states
         });
 
         // Enable buttons when connected
@@ -1846,7 +1848,7 @@
             btnPause.disabled = !hasTrace || isPaused;
             btnResume.disabled = !hasTrace || !isPaused;
             btnStep.disabled = !hasTrace || !isPaused;
-            btnClearBreakpoints.disabled = !hasTrace;
+            btnClearBreakpoints.disabled = breakpoints.size === 0;
         }
     </script>
 </body>
