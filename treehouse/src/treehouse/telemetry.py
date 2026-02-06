@@ -205,8 +205,7 @@ class TraceCollector:
         tree.tick(state)
         trace = collector.get_trace()
 
-    The collector matches start events (action_invoked, node_entered) with
-    end events (action_completed, node_exited, condition_evaluated) using
+    The collector matches node_entered with node_exited events using
     path_in_tree to compute execution duration.
 
     For LLM nodes, the collector can extract LLM execution data from the
@@ -256,13 +255,13 @@ class TraceCollector:
                 self._start_trace(event)
             case "tick_completed":
                 self._complete_trace(event)
-            case "action_invoked" | "node_entered":
+            case "node_entered":
                 self._pending[event.path_in_tree] = event
-            case "action_completed" | "node_exited":
+            case "node_exited":
                 self._complete_node(event)
-            case "condition_evaluated":
-                # Conditions don't have a start event, duration is 0
-                self._record_condition(event)
+            case "action_invoked" | "action_completed" | "condition_evaluated":
+                # Detail events; lifecycle tracked via node_entered/exited
+                pass
 
     def _start_trace(self, event: Event) -> None:
         """Start a new trace for this tick."""
@@ -324,39 +323,6 @@ class TraceCollector:
             timestamp=end_event.timestamp,
             status=end_event.payload.get("result", "unknown"),
             duration_ms=duration_ms,
-            **llm_data,
-        )
-
-        if self._current_trace is not None:
-            self._current_trace.executions.append(execution)
-
-        # Stream to debugger if connected
-        if self._debugger:
-            self._debugger.send_sync(
-                {
-                    "type": "node_execution",
-                    "data": execution.to_dict(),
-                }
-            )
-
-    def _record_condition(self, event: Event) -> None:
-        """Record a condition evaluation (no start event, instant)."""
-        # Convert bool result to status string
-        result = event.payload.get("result", False)
-        status = "success" if result else "failure"
-
-        # Extract LLM data from state if available
-        llm_data = self._extract_llm_data(event.node_id)
-
-        execution = NodeExecution(
-            node_id=event.node_id,
-            node_name=event.node_id,
-            node_type=event.node_type,
-            path_in_tree=event.path_in_tree,
-            start_time=event.timestamp,
-            timestamp=event.timestamp,
-            status=status,
-            duration_ms=0.0,
             **llm_data,
         )
 

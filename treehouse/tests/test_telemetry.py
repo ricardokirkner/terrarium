@@ -4,10 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from vivarium.core import (
-    ActionCompleted,
-    ActionInvoked,
     BehaviorTree,
-    ConditionEvaluated,
     NodeEntered,
     NodeExited,
     NodeStatus,
@@ -261,21 +258,20 @@ def test_trace_collector_creates_trace_on_tick_events():
 
 
 def test_trace_collector_computes_duration_from_paired_events():
-    """TraceCollector should compute duration from action_invoked/completed."""
+    """TraceCollector should compute duration from node_entered/exited."""
     collector = TraceCollector()
 
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ActionInvoked(
+        NodeEntered(
             tick_id=1,
             node_id="heal",
             node_type="Action",
             path_in_tree="root/heal",
         )
     )
-    # Small delay simulated via timestamp difference in actual usage
     collector.emit(
-        ActionCompleted(
+        NodeExited(
             tick_id=1,
             node_id="heal",
             node_type="Action",
@@ -323,17 +319,25 @@ def test_trace_collector_handles_node_entered_exited():
 
 
 def test_trace_collector_handles_condition_evaluated():
-    """TraceCollector should handle condition events (no start event)."""
+    """TraceCollector should handle condition lifecycle events."""
     collector = TraceCollector()
 
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ConditionEvaluated(
+        NodeEntered(
             tick_id=1,
             node_id="is_healthy",
             node_type="Condition",
             path_in_tree="root/is_healthy",
-            result=True,
+        )
+    )
+    collector.emit(
+        NodeExited(
+            tick_id=1,
+            node_id="is_healthy",
+            node_type="Condition",
+            path_in_tree="root/is_healthy",
+            result=NodeStatus.SUCCESS,
         )
     )
     collector.emit(TickCompleted(tick_id=1, result=NodeStatus.SUCCESS))
@@ -342,21 +346,28 @@ def test_trace_collector_handles_condition_evaluated():
     assert len(trace.executions) == 1
     assert trace.executions[0].node_id == "is_healthy"
     assert trace.executions[0].status == "success"
-    assert trace.executions[0].duration_ms == 0.0  # Conditions are instant
 
 
 def test_trace_collector_handles_false_condition():
-    """TraceCollector should convert False condition to 'failure' status."""
+    """TraceCollector should convert FAILURE result to 'failure' status."""
     collector = TraceCollector()
 
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ConditionEvaluated(
+        NodeEntered(
             tick_id=1,
             node_id="is_dead",
             node_type="Condition",
             path_in_tree="root/is_dead",
-            result=False,
+        )
+    )
+    collector.emit(
+        NodeExited(
+            tick_id=1,
+            node_id="is_dead",
+            node_type="Condition",
+            path_in_tree="root/is_dead",
+            result=NodeStatus.FAILURE,
         )
     )
     collector.emit(TickCompleted(tick_id=1, result=NodeStatus.FAILURE))
@@ -391,24 +402,40 @@ def test_trace_collector_get_executions():
 
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ConditionEvaluated(
+        NodeEntered(
             tick_id=1,
             node_id="cond1",
             node_type="Condition",
             path_in_tree="root/cond1",
-            result=True,
+        )
+    )
+    collector.emit(
+        NodeExited(
+            tick_id=1,
+            node_id="cond1",
+            node_type="Condition",
+            path_in_tree="root/cond1",
+            result=NodeStatus.SUCCESS,
         )
     )
     collector.emit(TickCompleted(tick_id=1, result=NodeStatus.SUCCESS))
 
     collector.emit(TickStarted(tick_id=2))
     collector.emit(
-        ConditionEvaluated(
+        NodeEntered(
             tick_id=2,
             node_id="cond2",
             node_type="Condition",
             path_in_tree="root/cond2",
-            result=False,
+        )
+    )
+    collector.emit(
+        NodeExited(
+            tick_id=2,
+            node_id="cond2",
+            node_type="Condition",
+            path_in_tree="root/cond2",
+            result=NodeStatus.FAILURE,
         )
     )
     collector.emit(TickCompleted(tick_id=2, result=NodeStatus.FAILURE))
@@ -437,24 +464,24 @@ def test_trace_collector_sets_node_start_time():
     end = start + timedelta(milliseconds=15)
 
     collector.emit(TickStarted(tick_id=tick_id))
-    invoked = ActionInvoked(
+    entered = NodeEntered(
         tick_id=tick_id,
         node_id="work",
         node_type="Action",
         path_in_tree="root/work",
     )
-    completed = ActionCompleted(
+    exited = NodeExited(
         tick_id=tick_id,
         node_id="work",
         node_type="Action",
         path_in_tree="root/work",
         result=NodeStatus.SUCCESS,
     )
-    object.__setattr__(invoked, "timestamp", start)
-    object.__setattr__(completed, "timestamp", end)
+    object.__setattr__(entered, "timestamp", start)
+    object.__setattr__(exited, "timestamp", end)
 
-    collector.emit(invoked)
-    collector.emit(completed)
+    collector.emit(entered)
+    collector.emit(exited)
     collector.emit(TickCompleted(tick_id=tick_id, result=NodeStatus.SUCCESS))
 
     trace = collector.get_trace()
@@ -575,7 +602,7 @@ def test_trace_collector_with_debugger_streams_events():
     # Emit events
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ActionInvoked(
+        NodeEntered(
             tick_id=1,
             node_id="task1",
             node_type="Action",
@@ -583,7 +610,7 @@ def test_trace_collector_with_debugger_streams_events():
         )
     )
     collector.emit(
-        ActionCompleted(
+        NodeExited(
             tick_id=1,
             node_id="task1",
             node_type="Action",
@@ -616,12 +643,20 @@ def test_trace_collector_with_debugger_streams_condition():
 
     collector.emit(TickStarted(tick_id=1))
     collector.emit(
-        ConditionEvaluated(
+        NodeEntered(
             tick_id=1,
             node_id="check",
             node_type="Condition",
             path_in_tree="root/check",
-            result=True,
+        )
+    )
+    collector.emit(
+        NodeExited(
+            tick_id=1,
+            node_id="check",
+            node_type="Condition",
+            path_in_tree="root/check",
+            result=NodeStatus.SUCCESS,
         )
     )
     collector.emit(TickCompleted(tick_id=1, result=NodeStatus.SUCCESS))
@@ -633,14 +668,14 @@ def test_trace_collector_with_debugger_streams_condition():
     assert "trace_complete" in event_types
 
 
-def test_trace_collector_orphaned_action_completion():
-    """TraceCollector should handle action completion without invoked event."""
+def test_trace_collector_orphaned_node_exited():
+    """TraceCollector should handle node_exited without node_entered."""
     collector = TraceCollector()
 
     collector.emit(TickStarted(tick_id=1))
-    # Complete action without invoking it first (orphaned)
+    # Exit without entering (orphaned)
     collector.emit(
-        ActionCompleted(
+        NodeExited(
             tick_id=1,
             node_id="orphan",
             node_type="Action",
