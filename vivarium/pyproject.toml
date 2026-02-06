@@ -26,6 +26,11 @@ exclude = ["build", "dist", ".venv", ".git"]
 select = ["E", "F", "W", "B", "C", "I"]
 ignore = ["E203"]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests",
+]
+
 [dependency-groups]
 dev = [
   "black>=26.1.0",
