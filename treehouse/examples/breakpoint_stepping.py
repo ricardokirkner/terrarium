@@ -1,8 +1,10 @@
 """Interactive demonstration of stepping through tree execution with breakpoints.
 
-This example shows the ACTUAL behavior of breakpoints in Treehouse:
+This example demonstrates Treehouse's debugging capabilities:
+- Tree structure loads immediately in the visualizer
+- Execution pauses BEFORE starting, allowing you to set breakpoints
 - Breakpoints pause BEFORE the tick that contains the breakpoint node
-- You can step through ticks (not individual nodes)
+- You can step through ticks one at a time
 - Multiple breakpoints in one tick will all trigger
 
 Usage:
@@ -12,17 +14,22 @@ Usage:
     # Terminal 2: Run this example
     python examples/breakpoint_stepping.py
 
+    # The script will:
+    1. Connect to visualizer and show the tree structure
+    2. PAUSE automatically - giving you time to set breakpoints
+    3. Wait for you to click Resume or Step to begin execution
+
     # In browser: http://localhost:8000
-    1. Set a breakpoint on any node (click the circle ○)
-    2. Watch execution pause BEFORE that tick starts
-    3. Click Step to execute one tick at a time
-    4. Click Resume to run remaining ticks without stopping
+    1. Tree renders immediately with all nodes visible
+    2. Set breakpoints by clicking circles (○) next to nodes
+    3. Click Resume to run all 10 ticks (pausing at breakpoints)
+    4. Or click Step to execute one tick at a time
 
 Try these experiments:
-- Set breakpoint on first node -> pauses before first tick
-- Set breakpoint on middle node -> pauses before that tick
-- Set breakpoints on multiple nodes in same tick -> pauses once
+- Set breakpoint on any node -> pauses before that tick
+- Set breakpoints on multiple nodes -> pauses before each tick
 - Use Step button to execute one tick at a time
+- Click Resume at any point to continue execution
 """
 
 import asyncio
@@ -76,7 +83,7 @@ async def main():
     collector.set_debugger(debugger_client)
 
     tree = BehaviorTree(sequence, emitter=collector)
-    debugger_tree = DebuggerTree(tree)
+    debugger_tree = DebuggerTree(tree, pause_before_start=True)
 
     # Set up bidirectional communication
     debugger_client.command_handler = debugger_tree
@@ -84,6 +91,7 @@ async def main():
     # Set up callback to send debugger events back to visualizer
     def send_debugger_event(event_type: str, data: dict):
         """Send debugger events to visualizer."""
+        print(f"🔔 Sending event to visualizer: {event_type} - {data}")
         # Use sync send which queues the message
         debugger_client.send_sync({"type": event_type, "data": data})
 
@@ -99,12 +107,27 @@ async def main():
 
     print("✅ Connected to visualizer")
     print()
-    print("Starting in 3 seconds...")
-    print("Set breakpoints now in the browser!")
-    await asyncio.sleep(3)
+
+    # Send the tree structure to the visualizer before execution starts
+    print("📊 Sending tree structure to visualizer...")
+    debugger_tree.send_tree_structure()
+
+    # Wait for the tree structure to be sent
+    await asyncio.sleep(0.1)
+
+    print("✅ Tree structure loaded in visualizer")
+    print()
+    print("⏸️  Execution will pause before starting")
+    print("   Go to http://localhost:8000 and:")
+    print("   1. Set breakpoints by clicking circles (○) next to nodes")
+    print("   2. Click Resume to start the 10-tick execution")
+    print("   3. Or use Step to execute one tick at a time")
+    print()
+    print("Waiting for Resume or Step command from visualizer...")
+    print()
 
     # Execute 10 ticks of the same tree
-    print("\n" + "=" * 60)
+    print("=" * 60)
     print("STARTING EXECUTION - 10 ticks")
     print("=" * 60)
 
@@ -129,6 +152,22 @@ async def main():
     print(f"   Step2 executed: {step2.execution_count} times")
     print(f"   Step3 executed: {step3.execution_count} times")
     print("=" * 60)
+
+    # Send execution finished event
+    debugger_client.send_sync(
+        {
+            "type": "execution_finished",
+            "data": {
+                "total_ticks": 10,
+                "step1_count": step1.execution_count,
+                "step2_count": step2.execution_count,
+                "step3_count": step3.execution_count,
+            },
+        }
+    )
+
+    # Give time for the event to be sent
+    await asyncio.sleep(0.5)
 
     # Cleanup
     await debugger_client.disconnect()

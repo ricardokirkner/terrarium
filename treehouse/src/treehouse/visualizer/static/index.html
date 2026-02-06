@@ -83,24 +83,6 @@
             background: var(--failure);
         }
         
-        .paused-banner {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: var(--running);
-            color: #000;
-            padding: 0.75rem;
-            text-align: center;
-            font-weight: 600;
-            z-index: 1000;
-            display: none;
-        }
-        
-        .paused-banner.show {
-            display: block;
-        }
-
         .status-badge {
             padding: 0.25rem 0.75rem;
             border-radius: 9999px;
@@ -240,6 +222,17 @@
             left: -12px;
             color: var(--failure);
             font-size: 1.2rem;
+        }
+        
+        .tree-node.executing {
+            background: rgba(255, 193, 7, 0.15);
+            border-left: 3px solid var(--running);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
         
         .breakpoint-indicator {
@@ -593,10 +586,6 @@
     </style>
 </head>
 <body>
-    <div id="paused-banner" class="paused-banner">
-        ⏸ EXECUTION PAUSED
-    </div>
-    
     <header>
         <h1>Treehouse Visualizer</h1>
         
@@ -713,6 +702,7 @@
         let events = [];
         let currentMetrics = null;
         let isPaused = false;
+        let currentExecutingNode = null; // The single node currently being evaluated
         let breakpoints = new Set(); // Set of node paths with breakpoints
 
         // DOM elements
@@ -737,7 +727,6 @@
         const metricTokenBreakdown = document.getElementById('metric-token-breakdown');
         const metricCost = document.getElementById('metric-cost');
         const metricCostBreakdown = document.getElementById('metric-cost-breakdown');
-        const pausedBanner = document.getElementById('paused-banner');
         const btnPause = document.getElementById('btn-pause');
         const btnResume = document.getElementById('btn-resume');
         const btnStep = document.getElementById('btn-step');
@@ -804,14 +793,22 @@
                     updateMetrics(currentMetrics);
                     break;
 
+                case 'tree_structure':
+                    handleTreeStructure(message.data || message);
+                    break;
+
                 case 'trace_start':
+                    // Preserve existing executions if we already have tree structure
+                    const existingExecutions = currentTrace && currentTrace.executions ? currentTrace.executions : [];
+                    
                     currentTrace = {
                         trace_id: message.trace_id,
                         tick_id: message.tick_id,
                         start_time: message.timestamp,
-                        executions: [],
+                        executions: existingExecutions,
                         status: 'running'
                     };
+                    
                     renderTree();
                     updateMetrics();
                     updateConnectionState(true);
@@ -829,6 +826,7 @@
                     if (currentTrace) {
                         currentTrace.end_time = message.timestamp;
                         currentTrace.status = message.status;
+                        
                         renderTree();
                         updateMetrics();
                         fetchTraces();
@@ -837,12 +835,24 @@
 
                 case 'paused':
                     handlePausedEvent(message.data || message);
-                    updateConnectionState(true);
+                    // Don't call updateConnectionState - handlePausedEvent already updates button states
                     break;
 
                 case 'resumed':
                     handleResumedEvent();
-                    updateConnectionState(true);
+                    // Don't call updateConnectionState - handleResumedEvent already updates button states
+                    break;
+                
+                case 'node_executing':
+                    handleNodeExecuting(message.data || message);
+                    break;
+                
+                case 'tick_complete':
+                    handleTickComplete(message.data || message);
+                    break;
+                
+                case 'execution_finished':
+                    handleExecutionFinished(message.data || message);
                     break;
             }
         }
@@ -1034,10 +1044,11 @@
                 const indent = depth * 24;
                 const isSelected = selectedNode && selectedNode.node_id === exec.node_id;
                 const hasBreak = hasBreakpoint(exec.path_in_tree);
+                const isExecuting = isPaused && currentExecutingNode === exec.path_in_tree;
                 const duration = exec.duration_ms > 0 ? formatDuration(exec.duration_ms) : '';
 
                 return `
-                    <div class="tree-node ${isSelected ? 'selected' : ''} ${hasBreak ? 'has-breakpoint' : ''}"
+                    <div class="tree-node ${isSelected ? 'selected' : ''} ${hasBreak ? 'has-breakpoint' : ''} ${isExecuting ? 'executing' : ''}"
                           style="padding-left: ${indent}px"
                           data-index="${index}"
                           data-path="${exec.path_in_tree}">
@@ -1533,8 +1544,8 @@
             btnResume.disabled = !paused;
             btnStep.disabled = !paused;
             
-            // Show/hide paused banner
-            pausedBanner.classList.toggle('show', paused);
+            // Don't show the banner - node highlighting is enough
+            // pausedBanner.classList.toggle('show', paused);
         }
 
         function handlePausedEvent(data) {
@@ -1544,23 +1555,38 @@
             const note = data.note || '';
             addEvent('debugger', `Paused: ${reason} ${nodePath ? `at ${nodePath}` : ''}`);
             
+            // Highlight the specific node where we paused
+            currentExecutingNode = nodePath || null;
+            renderTree(); // Re-render to show highlight
+            
+            // Banner removed - node highlighting is sufficient
+            
             // Show debugger state
             const debuggerStateSection = document.getElementById('debugger-state-section');
             const debuggerState = document.getElementById('debugger-state');
             if (debuggerStateSection && debuggerState) {
                 debuggerStateSection.style.display = 'block';
                 let html = '<div style="margin-bottom: 0.5rem;"><strong>⏸ Execution Paused</strong></div>';
-                html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Reason: ${reason}</div>`;
-                if (nodePath) {
-                    html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Location: ${nodePath}</div>`;
+                
+                // Special handling for before_start reason
+                if (reason === 'before_start') {
+                    html += `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--accent);">⏱️ Paused before first tick</div>`;
+                    html += '<div style="font-size: 0.85rem; margin-bottom: 0.75rem;">Set breakpoints by clicking circles (○) next to nodes</div>';
+                    html += '<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--success);"><strong>Click Resume to start execution</strong></div>';
+                } else {
+                    html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Reason: ${reason}</div>`;
+                    if (nodePath) {
+                        html += `<div style="font-size: 0.85rem; margin-bottom: 0.25rem;">Location: ${nodePath}</div>`;
+                    }
+                    if (note) {
+                        html += `<div style="font-size: 0.75rem; color: var(--text-secondary);">${note}</div>`;
+                    }
+                    if (data.hit_count) {
+                        html += `<div style="font-size: 0.75rem; margin-top: 0.5rem;">Hit count: ${data.hit_count}</div>`;
+                    }
+                    html += '<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--success);">Use Resume or Step buttons to continue</div>';
                 }
-                if (note) {
-                    html += `<div style="font-size: 0.75rem; color: var(--text-secondary);">${note}</div>`;
-                }
-                if (data.hit_count) {
-                    html += `<div style="font-size: 0.75rem; margin-top: 0.5rem;">Hit count: ${data.hit_count}</div>`;
-                }
-                html += '<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--success);">Use Resume or Step buttons to continue</div>';
+                
                 debuggerState.innerHTML = html;
             }
         }
@@ -1569,11 +1595,162 @@
             updateDebuggerState(false);
             addEvent('debugger', 'Resumed execution');
             
+            // Clear the executing node highlight
+            currentExecutingNode = null;
+            renderTree();
+            
             // Hide debugger state
             const debuggerStateSection = document.getElementById('debugger-state-section');
             if (debuggerStateSection) {
                 debuggerStateSection.style.display = 'none';
             }
+        }
+        
+        function handleTreeStructure(treeData) {
+            // Convert tree structure to executions format
+            const executions = [];
+            
+            function flattenTree(node) {
+                executions.push({
+                    node_id: node.node_name,
+                    node_name: node.node_name,
+                    node_type: node.node_type,
+                    path_in_tree: node.path_in_tree,
+                    start_time: null,
+                    timestamp: null,
+                    status: 'pending',
+                    duration_ms: 0,
+                });
+                
+                if (node.children && node.children.length > 0) {
+                    node.children.forEach(child => flattenTree(child));
+                }
+            }
+            
+            flattenTree(treeData);
+            
+            // Initialize currentTrace if it doesn't exist
+            if (!currentTrace) {
+                currentTrace = {
+                    trace_id: 'structure-' + Date.now(),
+                    tick_id: 0,
+                    executions: executions,
+                    status: 'pending'
+                };
+            } else {
+                // Update existing trace with structure
+                currentTrace.executions = executions;
+            }
+            
+            renderTree();
+            addEvent('system', '🌳 Tree structure loaded');
+            
+            // Re-send any existing breakpoints to the new agent
+            if (breakpoints.size > 0) {
+                const breakpointPaths = Array.from(breakpoints);
+                addEvent('debugger', `Re-sending ${breakpointPaths.length} breakpoint(s) to agent`);
+                breakpointPaths.forEach(nodePath => {
+                    sendDebuggerCommand('set_breakpoint', { node_path: nodePath });
+                });
+            }
+        }
+        
+        function handleNodeExecuting(data) {
+            const nodePath = data.node_path || '';
+            const nodeName = data.node_name || '';
+            const nodeType = data.node_type || '';
+            
+            // Update the currently executing node for highlighting
+            currentExecutingNode = nodePath;
+            
+            // Update or add this node to the current trace
+            if (currentTrace) {
+                // Check if we already have this node in executions
+                const existingNode = currentTrace.executions.find(e => e.path_in_tree === nodePath);
+                if (existingNode) {
+                    // Update existing node status
+                    existingNode.status = 'running';
+                    existingNode.start_time = new Date().toISOString();
+                    existingNode.timestamp = new Date().toISOString();
+                } else {
+                    // Add a new execution entry for this node
+                    currentTrace.executions.push({
+                        node_id: nodeName,
+                        node_name: nodeName,
+                        node_type: nodeType,
+                        path_in_tree: nodePath,
+                        start_time: new Date().toISOString(),
+                        timestamp: new Date().toISOString(),
+                        status: 'running',
+                        duration_ms: 0,
+                    });
+                }
+                renderTree();
+            }
+            
+            addEvent('execution', `Executing: ${nodeName} (${nodePath})`);
+        }
+        
+        function handleTickComplete(data) {
+            addEvent('execution', `Tick completed: ${data.status || 'unknown'}`);
+            
+            // Mark running nodes as complete and reset to pending for next tick
+            if (currentTrace && currentTrace.executions) {
+                currentTrace.executions.forEach(exec => {
+                    // Reset nodes to pending state for next tick
+                    exec.status = 'pending';
+                    exec.start_time = null;
+                    exec.timestamp = null;
+                    exec.duration_ms = 0;
+                });
+            }
+            
+            // Clear currently executing node
+            currentExecutingNode = null;
+            renderTree();
+        }
+        
+        function handleExecutionFinished(data) {
+            addEvent('execution', `🎉 Execution finished! Total ticks: ${data.total_ticks || 'unknown'}`);
+            
+            // Clear state
+            isPaused = false;
+            currentExecutingNode = null;
+            renderTree();
+            
+            // Disable all debugger buttons - execution is finished
+            btnPause.disabled = true;
+            btnResume.disabled = true;
+            btnStep.disabled = true;
+            
+            // Hide debugger state panel
+            const debuggerStateSection = document.getElementById('debugger-state-section');
+            if (debuggerStateSection) {
+                debuggerStateSection.style.display = 'none';
+            }
+            
+            // Show a temporary success banner
+            const banner = document.createElement('div');
+            banner.style.cssText = `
+                position: fixed;
+                top: 120px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--success);
+                color: #000;
+                padding: 1rem 2rem;
+                border-radius: 8px;
+                font-weight: 600;
+                z-index: 1001;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            `;
+            banner.textContent = '🎉 Execution Complete!';
+            document.body.appendChild(banner);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                banner.remove();
+            }, 3000);
         }
 
         // Breakpoint management

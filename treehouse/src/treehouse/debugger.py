@@ -131,25 +131,31 @@ class DebuggerClient:
 
     async def _receive_loop(self) -> None:
         """Background task to receive messages from the server."""
+        logger.info("🔄 Receive loop started")
         try:
             while self._connected and self._ws:
                 try:
                     message = await self._ws.recv()
                     data = json.loads(message)
+                    logger.info(f"📥 Agent received from server: {data}")
 
                     # Handle incoming commands
                     if data.get("type") and self.command_handler:
                         command = data.get("type")
                         payload = data.get("data", {})
+                        logger.info(
+                            f"🎯 Processing command: {command} with payload: {payload}"
+                        )
 
                         try:
                             self.command_handler.handle_command(command, payload)
+                            logger.info(f"✅ Command {command} handled successfully")
                         except Exception as e:
-                            logger.error(f"Error handling command {command}: {e}")
+                            logger.error(f"❌ Error handling command {command}: {e}")
 
                 except Exception as e:
                     if self._connected:
-                        logger.warning(f"Error in receive loop: {e}")
+                        logger.warning(f"⚠️ Error in receive loop: {e}")
                         break
         except asyncio.CancelledError:
             logger.debug("Receive loop cancelled")

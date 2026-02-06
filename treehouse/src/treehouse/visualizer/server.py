@@ -105,11 +105,14 @@ class ConnectionManager:
 
     async def broadcast_to_agents(self, message: dict[str, Any]) -> None:
         """Send a message to all connected agents."""
+        logger.info(f"📤 Broadcasting to {len(self.agents)} agent(s): {message}")
         disconnected = []
         for agent in self.agents:
             try:
                 await agent.send_json(message)
-            except Exception:
+                logger.info("✅ Sent to agent successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to send to agent: {e}")
                 disconnected.append(agent)
 
         # Clean up disconnected agents
@@ -314,7 +317,7 @@ async def viewer_websocket(websocket: WebSocket):
             # Viewers can send debugger commands
             data = await websocket.receive_text()
             message = json.loads(data)
-            logger.debug(f"Viewer message: {message}")
+            logger.info(f"📨 Viewer sent: {message}")
 
             # Forward debugger commands to agents
             if message.get("type") in [
@@ -325,6 +328,7 @@ async def viewer_websocket(websocket: WebSocket):
                 "clear_breakpoint",
                 "clear_all_breakpoints",
             ]:
+                logger.info(f"🔀 Forwarding command '{message.get('type')}' to agents")
                 await manager.broadcast_to_agents(message)
     except WebSocketDisconnect:
         manager.disconnect_viewer(websocket)

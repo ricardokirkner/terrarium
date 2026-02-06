@@ -394,11 +394,12 @@ async def test_async_tick_with_breakpoint():
 
     # Should be paused
     assert debugger.paused
-    assert len(commands_received) == 1
-    assert commands_received[0][0] == "paused"
-    assert commands_received[0][1]["reason"] == "breakpoint"
-    assert commands_received[0][1]["node_path"] == "root"
-    assert commands_received[0][1]["hit_count"] == 1
+    assert len(commands_received) == 2  # trace_start + paused
+    assert commands_received[0][0] == "trace_start"
+    assert commands_received[1][0] == "paused"
+    assert commands_received[1][1]["reason"] == "breakpoint"
+    assert commands_received[1][1]["node_path"] == "root"
+    assert commands_received[1][1]["hit_count"] == 1
 
     # Resume to complete
     debugger.resume()
@@ -437,8 +438,9 @@ async def test_async_tick_with_conditional_breakpoint_hit():
 
     # Should be paused
     assert debugger.paused
-    assert len(commands_received) == 1
-    assert commands_received[0][1]["reason"] == "breakpoint"
+    assert len(commands_received) == 2  # trace_start + paused
+    assert commands_received[0][0] == "trace_start"
+    assert commands_received[1][1]["reason"] == "breakpoint"
 
     debugger.resume()
     await task
@@ -472,7 +474,11 @@ async def test_async_tick_with_conditional_breakpoint_no_hit():
 
     assert result == NodeStatus.SUCCESS
     assert not debugger.paused
-    assert len(commands_received) == 0
+    # Should receive trace_start, node_executing and tick_complete events
+    assert len(commands_received) == 3
+    assert commands_received[0][0] == "trace_start"
+    assert commands_received[1][0] == "node_executing"
+    assert commands_received[2][0] == "tick_complete"
 
 
 @pytest.mark.asyncio
@@ -523,9 +529,11 @@ async def test_async_tick_step_mode():
 
     # Should have paused after step
     assert debugger.paused
-    assert len(commands_received) == 2  # manual pause + step pause
-    assert commands_received[1][0] == "paused"
-    assert commands_received[1][1]["reason"] == "step"
+    assert len(commands_received) == 3  # manual pause + trace_start + step pause
+    assert commands_received[0][0] == "paused"
+    assert commands_received[1][0] == "trace_start"
+    assert commands_received[2][0] == "paused"
+    assert commands_received[2][1]["reason"] == "step"
 
     # Resume
     debugger.resume()
@@ -564,3 +572,125 @@ async def test_async_multiple_breakpoints():
 
     debugger.resume()
     await task2
+
+
+@pytest.mark.asyncio
+async def test_pause_before_start():
+    """Test pausing before the first tick."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree, pause_before_start=True)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+
+    state = State()
+
+    # Should be paused initially
+    assert debugger.paused
+
+    # Start execution - should pause before first tick
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+
+    # Should have sent trace_start and paused event
+    assert len(commands_received) == 2
+    assert commands_received[0][0] == "trace_start"
+    assert commands_received[1][0] == "paused"
+    assert commands_received[1][1]["reason"] == "before_start"
+
+    # Resume execution
+    debugger.resume()
+    result = await task
+
+    # Should have completed successfully
+    assert result == NodeStatus.SUCCESS
+    assert not debugger.paused
+
+    # Should have sent trace_start, paused, resumed, node_executing,
+    # and tick_complete events
+    assert len(commands_received) == 5
+    assert commands_received[2][0] == "resumed"
+    assert commands_received[3][0] == "node_executing"
+    assert commands_received[4][0] == "tick_complete"
+
+
+@pytest.mark.asyncio
+async def test_pause_before_start_then_step():
+    """Test pausing before start, then using step mode."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree, pause_before_start=True)
+
+    state = State()
+
+    # Start execution - paused before first tick
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+
+    assert debugger.paused
+
+    # Use step - this will pause again before executing the tick
+    debugger.step()
+    await asyncio.sleep(0.01)
+
+    # Should still be paused (step pauses before tick)
+    assert debugger.paused
+
+    # Resume to complete the tick
+    debugger.resume()
+    result = await task
+
+    assert result == NodeStatus.SUCCESS
+    assert not debugger.paused
+
+
+@pytest.mark.asyncio
+async def test_pause_before_start_with_breakpoint():
+    """Test pause_before_start allows setting breakpoints before execution."""
+    action = SimpleAction("test_action")
+    tree = BehaviorTree(action)
+    debugger = DebuggerTree(tree, pause_before_start=True)
+
+    commands_received = []
+
+    def handler(command, data):
+        commands_received.append((command, data))
+
+    debugger.set_command_handler(handler)
+
+    state = State()
+
+    # Start execution - paused before first tick
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.01)
+
+    assert debugger.paused
+    assert commands_received[0][0] == "trace_start"
+    assert commands_received[1][1]["reason"] == "before_start"
+
+    # Set a breakpoint while paused
+    debugger.set_breakpoint("root")
+
+    # Resume - should hit the breakpoint
+    debugger.resume()
+    await asyncio.sleep(0.01)
+
+    # Should still be paused due to breakpoint
+    assert debugger.paused
+
+    # Should have paused event with breakpoint reason
+    breakpoint_pause_events = [
+        cmd
+        for cmd in commands_received
+        if cmd[0] == "paused" and cmd[1].get("reason") == "breakpoint"
+    ]
+    assert len(breakpoint_pause_events) == 1
+
+    # Resume again to complete
+    debugger.resume()
+    await task
