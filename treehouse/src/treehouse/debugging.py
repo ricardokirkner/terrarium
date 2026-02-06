@@ -2,10 +2,16 @@
 
 This module provides debugging capabilities like breakpoints, stepping,
 and pause/resume for behavior tree execution.
+
+The DebuggerTree delegates all execution to Vivarium's node.tick() and
+uses a DebugEmitter to intercept node_entered events for breakpoint and
+step-mode pauses. The tree tick runs in a worker thread so that blocking
+on a threading.Event does not stall the async event loop.
 """
 
 import asyncio
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +19,8 @@ from enum import Enum
 from typing import Any, Callable
 
 from vivarium import BehaviorTree, NodeStatus
+from vivarium.core.context import ExecutionContext
+from vivarium.core.events import Event, EventEmitter, NodeEntered
 from vivarium.core.node import Node
 
 logger = logging.getLogger(__name__)
@@ -43,11 +51,130 @@ class BreakpointConfig:
     """Number of times this breakpoint has been hit."""
 
 
+def _evaluate_bp_condition(bp: BreakpointConfig, state: Any) -> bool:
+    """Evaluate a breakpoint's condition against the current state.
+
+    Returns True if the breakpoint should trigger.
+    """
+    if bp.condition is None:
+        return True
+    try:
+        return bp.condition(state)
+    except Exception as e:
+        logger.warning(f"Breakpoint condition failed: {e}")
+        return False
+
+
+class _DebugEmitter:
+    """Event emitter that intercepts node_entered events for debugging.
+
+    When a node_entered event matches a breakpoint or step-mode is active,
+    the emitter blocks the calling thread until the debugger resumes.
+    This allows pausing mid-tick without reimplementing tree semantics.
+
+    The emitter also forwards all events to an optional inner emitter
+    (e.g., a TraceCollector) and notifies the command handler of debug
+    state changes.
+    """
+
+    def __init__(
+        self,
+        debugger: "DebuggerTree",
+        inner: EventEmitter | None = None,
+        state: Any = None,
+    ):
+        self._debugger = debugger
+        self._inner = inner
+        self._state = state
+
+    def emit(self, event: Event) -> None:
+        """Emit an event, pausing on node_entered if needed."""
+        # Forward to inner emitter first
+        if self._inner is not None:
+            self._inner.emit(event)
+
+        if not isinstance(event, NodeEntered):
+            return
+
+        node_path = event.path_in_tree
+        debugger = self._debugger
+
+        # Update current node path
+        debugger._current_node_path = node_path
+
+        # Notify command handler of node execution
+        if debugger._command_handler:
+            debugger._command_handler(
+                "node_executing",
+                {
+                    "node_path": node_path,
+                    "node_name": event.node_id,
+                    "node_type": event.node_type,
+                },
+            )
+
+        self._check_breakpoint(node_path)
+        self._check_step_mode(node_path)
+
+    def _check_breakpoint(self, node_path: str) -> None:
+        """Block the tick thread if a breakpoint matches this path."""
+        debugger = self._debugger
+        bp = debugger.breakpoints.get(node_path)
+        if not bp:
+            return
+
+        should_trigger = _evaluate_bp_condition(bp, self._state)
+        if not should_trigger:
+            return
+
+        bp.hit_count += 1
+        debugger._paused = True
+        debugger._thread_resume.clear()
+
+        if debugger._command_handler:
+            debugger._command_handler(
+                "paused",
+                {
+                    "reason": "breakpoint",
+                    "node_path": node_path,
+                    "hit_count": bp.hit_count,
+                    "note": f"Paused at breakpoint on {node_path}",
+                },
+            )
+
+        debugger._thread_resume.wait()
+
+    def _check_step_mode(self, node_path: str) -> None:
+        """Block the tick thread if step mode is active."""
+        debugger = self._debugger
+        if not debugger._step_mode:
+            return
+
+        debugger._paused = True
+        debugger._thread_resume.clear()
+        debugger._step_mode = False
+
+        if debugger._command_handler:
+            debugger._command_handler(
+                "paused",
+                {
+                    "reason": "step",
+                    "node_path": node_path,
+                },
+            )
+
+        debugger._thread_resume.wait()
+
+
 class DebuggerTree:
     """Behavior tree wrapper with debugging support.
 
     This class wraps a Vivarium BehaviorTree and adds debugging capabilities
     such as breakpoints, stepping through execution, and pause/resume.
+
+    Execution is fully delegated to Vivarium's node.tick(). A DebugEmitter
+    intercepts node_entered events to check breakpoints and step-mode,
+    blocking the tick thread when a pause is needed.
 
     Attributes:
         tree: The wrapped BehaviorTree instance.
@@ -70,10 +197,14 @@ class DebuggerTree:
         self._pause_before_start = pause_before_start  # Track initial pause request
         self._step_mode = False
         self._resume_event = asyncio.Event()
+        # Threading event used by the tick thread to block on pause
+        self._thread_resume = threading.Event()
         if pause_before_start:
             self._resume_event.clear()  # Start paused if requested
+            self._thread_resume.clear()
         else:
             self._resume_event.set()  # Start in resumed state
+            self._thread_resume.set()
         self._current_node_path: str | None = None
         self._command_handler: Callable[[str, dict], None] | None = None
         self._first_tick = True  # Track if this is the first tick
@@ -104,7 +235,7 @@ class DebuggerTree:
         """Set a breakpoint at a specific node path.
 
         Args:
-            node_path: The path to the node (e.g., "root/sequence[0]/action[1]").
+            node_path: The path to the node (e.g., "root/action@0").
             condition: Optional condition function that must return True for the
                       breakpoint to trigger.
         """
@@ -141,6 +272,7 @@ class DebuggerTree:
         if not self._paused:
             self._paused = True
             self._resume_event.clear()
+            self._thread_resume.clear()
             if self._command_handler:
                 self._command_handler(
                     "paused",
@@ -155,6 +287,7 @@ class DebuggerTree:
         self._paused = False
         self._step_mode = False
         self._resume_event.set()
+        self._thread_resume.set()
         if self._command_handler:
             self._command_handler("resumed", {})
 
@@ -162,6 +295,7 @@ class DebuggerTree:
         """Execute one step (one node) then pause again."""
         self._step_mode = True
         self._resume_event.set()
+        self._thread_resume.set()
 
     def _extract_tree_structure(self, node: Node, path: str = "root") -> dict:
         """Extract the full tree structure for visualization.
@@ -183,10 +317,18 @@ class DebuggerTree:
         # Check if this is a composite node with children
         if hasattr(node, "children") and node.children:
             for i, child in enumerate(node.children):
-                # Use index-based path to match execution paths
-                child_path = f"{path}/{i}"
+                child_name = getattr(child, "name", child.__class__.__name__)
+                child_path = f"{path}/{child_name}@{i}"
                 child_info = self._extract_tree_structure(child, child_path)
                 node_info["children"].append(child_info)
+
+        # Check if this is a decorator node with a single child
+        if hasattr(node, "child") and not hasattr(node, "children"):
+            child = node.child
+            child_name = getattr(child, "name", child.__class__.__name__)
+            child_path = f"{path}/{child_name}"
+            child_info = self._extract_tree_structure(child, child_path)
+            node_info["children"].append(child_info)
 
         return node_info
 
@@ -202,218 +344,43 @@ class DebuggerTree:
         tree_structure = self._extract_tree_structure(self.tree.root, "root")
         self._command_handler("tree_structure", tree_structure)
 
-    async def _execute_node_async(
-        self, node: Node, state: Any, path: str = "root"
-    ) -> NodeStatus:
-        """Execute a single node asynchronously with debugging support.
+    def _run_tick_in_thread(self, state: Any, emitter: _DebugEmitter) -> NodeStatus:
+        """Run a tree tick in the current thread with the debug emitter.
 
-        This method recursively walks the tree and pauses at breakpoints
-        or in step mode.
+        This is called via asyncio.to_thread so the blocking pause in
+        _DebugEmitter.emit() does not stall the event loop.
 
         Args:
-            node: The node to execute
-            state: The current state
-            path: The path to this node in the tree
+            state: The current state to pass through the tree.
+            emitter: The debug emitter that intercepts events.
 
         Returns:
-            The status returned by the node
+            The status returned by the tree.
         """
-        # Check if we should pause before executing this node
-        await self._check_node_breakpoint(path, state)
+        self.tree.tick_count += 1
+        tick_id = self.tree.tick_count
 
-        # Check for step mode - pause before each node
-        if self._step_mode:
-            self._paused = True
-            self._resume_event.clear()
-            self._step_mode = False  # Clear after using
+        from vivarium.core.events import TickCompleted, TickStarted
 
-            if self._command_handler:
-                self._command_handler(
-                    "paused",
-                    {
-                        "reason": "step",
-                        "node_path": path,
-                    },
-                )
+        emitter.emit(TickStarted(tick_id=tick_id))
 
-            await self._resume_event.wait()
+        root_name = getattr(self.tree.root, "name", type(self.tree.root).__name__)
+        root_type = type(self.tree.root).__name__
+        ctx = ExecutionContext(tick_id=tick_id, path="")
+        root_ctx = ctx.child(root_name, root_type)
 
-        # Store current node being executed
-        self._current_node_path = path
+        result = self.tree.root.tick(state, emitter, root_ctx)
 
-        # Notify that we're about to execute this node
-        if self._command_handler:
-            self._command_handler(
-                "node_executing",
-                {
-                    "node_path": path,
-                    "node_name": node.name,
-                    "node_type": type(node).__name__,
-                },
-            )
-
-        # Execute the node based on its type
-        if hasattr(node, "children"):
-            # Composite node - execute children based on node type
-            result = await self._execute_composite_node(node, state, path)
-        else:
-            # Leaf node - execute directly
-            result = node.tick(state)
-
+        emitter.emit(TickCompleted(tick_id=tick_id, result=result))
         return result
-
-    async def _execute_composite_node(
-        self, node: Node, state: Any, path: str
-    ) -> NodeStatus:
-        """Execute a composite node's children according to its logic.
-
-        Args:
-            node: The composite node
-            state: The current state
-            path: The path to this node
-
-        Returns:
-            The status based on the composite node's logic
-        """
-        node_type = type(node).__name__
-
-        if node_type == "Sequence":
-            # Sequence: execute children in order, stop on first non-success
-            for i, child in enumerate(node.children):
-                child_path = f"{path}/{i}"
-                status = await self._execute_node_async(child, state, child_path)
-                if status != NodeStatus.SUCCESS:
-                    return status
-            return NodeStatus.SUCCESS
-
-        elif node_type == "Selector":
-            # Selector: execute children in order, stop on first non-failure
-            for i, child in enumerate(node.children):
-                child_path = f"{path}/{i}"
-                status = await self._execute_node_async(child, state, child_path)
-                if status != NodeStatus.FAILURE:
-                    return status
-            return NodeStatus.FAILURE
-
-        elif node_type == "Parallel":
-            # Parallel: execute all children
-            statuses = []
-            for i, child in enumerate(node.children):
-                child_path = f"{path}/{i}"
-                status = await self._execute_node_async(child, state, child_path)
-                statuses.append(status)
-
-            # Return based on parallel policy (simplified: all must succeed)
-            if all(s == NodeStatus.SUCCESS for s in statuses):
-                return NodeStatus.SUCCESS
-            return NodeStatus.FAILURE
-
-        else:
-            # Unknown composite type - fall back to normal tick
-            logger.warning(
-                f"Unknown composite node type: {node_type}, using normal tick"
-            )
-            return node.tick(state)
-
-    async def _check_node_breakpoint(self, node_path: str, state: Any) -> None:
-        """Check if we should pause at this specific node.
-
-        Args:
-            node_path: The path to the node
-            state: The current state
-        """
-        bp = self.breakpoints.get(node_path)
-        if bp:
-            # Check condition if present
-            should_trigger = False
-            if bp.condition is None:
-                should_trigger = True
-            else:
-                try:
-                    should_trigger = bp.condition(state)
-                except Exception as e:
-                    logger.warning(f"Breakpoint condition failed: {e}")
-                    should_trigger = False
-
-            if should_trigger:
-                bp.hit_count += 1
-                self._paused = True
-                self._resume_event.clear()
-
-                if self._command_handler:
-                    self._command_handler(
-                        "paused",
-                        {
-                            "reason": "breakpoint",
-                            "node_path": node_path,
-                            "hit_count": bp.hit_count,
-                            "note": f"Paused at breakpoint on {node_path}",
-                        },
-                    )
-
-                await self._resume_event.wait()
-
-    async def _check_breakpoint(self, node_path: str, state: Any) -> None:
-        """Check if we should pause at this node.
-
-        Args:
-            node_path: The path of the node about to execute.
-            state: The current state.
-        """
-        self._current_node_path = node_path
-
-        # Check for breakpoint
-        if node_path in self.breakpoints:
-            bp = self.breakpoints[node_path]
-            should_break = True
-
-            if bp.condition is not None:
-                try:
-                    should_break = bp.condition(state)
-                except Exception:
-                    # If condition evaluation fails, don't break
-                    should_break = False
-
-            if should_break:
-                bp.hit_count += 1
-                self._paused = True
-                self._resume_event.clear()
-
-                if self._command_handler:
-                    self._command_handler(
-                        "paused",
-                        {
-                            "reason": "breakpoint",
-                            "node_path": node_path,
-                            "hit_count": bp.hit_count,
-                        },
-                    )
-
-        # Check for step mode
-        if self._step_mode:
-            self._paused = True
-            self._resume_event.clear()
-            self._step_mode = False
-
-            if self._command_handler:
-                self._command_handler(
-                    "paused",
-                    {
-                        "reason": "step",
-                        "node_path": node_path,
-                    },
-                )
-
-        # Wait if paused
-        if self._paused:
-            await self._resume_event.wait()
 
     async def tick_async(self, state: Any) -> NodeStatus:
         """Execute one tick of the behavior tree asynchronously.
 
-        This method executes the tree node-by-node, checking for breakpoints
-        and step mode at each node. This allows pausing at specific nodes
-        within a tick, not just at tick boundaries.
+        Execution is delegated entirely to Vivarium's node.tick(), running
+        in a worker thread. A DebugEmitter intercepts node_entered events
+        to check breakpoints and step-mode, blocking the tick thread when
+        a pause is needed.
 
         Args:
             state: The current state to pass through the tree.
@@ -437,7 +404,7 @@ class DebuggerTree:
         if self._first_tick and self._pause_before_start:
             self._first_tick = False
             self._pause_before_start = False  # Only pause once
-            logger.info("⏸️  Paused before first tick (pause_before_start=True)")
+            logger.info("Paused before first tick (pause_before_start=True)")
 
             if self._command_handler:
                 self._command_handler(
@@ -457,11 +424,15 @@ class DebuggerTree:
 
         # Check if manually paused
         if self._paused and not self._step_mode and not self._pause_before_start:
-            logger.info("⏸️  Waiting for resume (manual pause)")
+            logger.info("Waiting for resume (manual pause)")
             await self._resume_event.wait()
 
-        # Execute the tree node-by-node with debugging support
-        result = await self._execute_node_async(self.tree.root, state, "root")
+        # Build the debug emitter wrapping the tree's existing emitter
+        inner_emitter = getattr(self.tree, "_emitter", None)
+        debug_emitter = _DebugEmitter(self, inner=inner_emitter, state=state)
+
+        # Run the tick in a thread so blocking pauses don't stall the loop
+        result = await asyncio.to_thread(self._run_tick_in_thread, state, debug_emitter)
 
         # Send tick_complete event after execution
         if self._command_handler:
@@ -491,33 +462,23 @@ class DebuggerTree:
             data: Optional data for the command.
         """
         data = data or {}
-        logger.info(f"🎮 DebuggerTree.handle_command: {command} with data: {data}")
+        logger.info(f"DebuggerTree.handle_command: {command} with data: {data}")
 
         if command == DebuggerCommand.PAUSE:
-            logger.info("⏸️  Executing PAUSE")
             self.pause()
         elif command == DebuggerCommand.RESUME:
-            logger.info("▶️  Executing RESUME")
             self.resume()
-            logger.info(
-                f"▶️  After resume: _paused={self._paused}, "
-                f"_resume_event.is_set()={self._resume_event.is_set()}"
-            )
         elif command == DebuggerCommand.STEP:
-            logger.info("⏭️  Executing STEP")
             self.step()
         elif command == DebuggerCommand.SET_BREAKPOINT:
             node_path = data.get("node_path")
             if node_path:
-                logger.info(f"🔴 Setting breakpoint at {node_path}")
                 self.set_breakpoint(node_path)
         elif command == DebuggerCommand.CLEAR_BREAKPOINT:
             node_path = data.get("node_path")
             if node_path:
-                logger.info(f"⚪ Clearing breakpoint at {node_path}")
                 self.clear_breakpoint(node_path)
         elif command == DebuggerCommand.CLEAR_ALL_BREAKPOINTS:
-            logger.info("⚪ Clearing all breakpoints")
             self.clear_all_breakpoints()
 
     def reset(self) -> None:
@@ -526,6 +487,7 @@ class DebuggerTree:
         self._paused = False
         self._step_mode = False
         self._resume_event.set()
+        self._thread_resume.set()
         self._current_node_path = None
         self._first_tick = True
         # Note: We don't clear breakpoints on reset
