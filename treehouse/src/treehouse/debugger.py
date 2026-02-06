@@ -64,6 +64,7 @@ class DebuggerClient:
         self._connecting = False
         self._send_queue: list[dict[str, Any]] = []
         self._receive_task: Any = None
+        self._loop: asyncio.AbstractEventLoop | None = None  # Store event loop ref
 
     @property
     def connected(self) -> bool:
@@ -85,6 +86,7 @@ class DebuggerClient:
 
             self._ws = await websockets.connect(self.url)
             self._connected = True
+            self._loop = asyncio.get_running_loop()  # Store event loop reference
             logger.info(f"Connected to visualizer at {self.url}")
 
             # Send any queued events
@@ -208,19 +210,19 @@ class DebuggerClient:
     def send_sync(self, event: dict[str, Any]) -> None:
         """Send an event synchronously (for non-async contexts).
 
-        If a running event loop is available, schedules the send as a
-        task. Otherwise queues the event to be sent on next connect or
-        flush.
+        If connected and event loop is available, schedules the send to run
+        in the event loop thread-safely. Otherwise queues the event.
 
         Args:
             event: Event dictionary to send.
         """
-        if self._connected and self._ws:
+        if self._connected and self._ws and self._loop:
             try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self._send(event))
-            except RuntimeError:
-                # No running loop — queue for later
+                # Use run_coroutine_threadsafe for thread-safe scheduling
+                # This works even when called from worker threads
+                asyncio.run_coroutine_threadsafe(self._send(event), self._loop)
+            except Exception as e:
+                logger.warning(f"Failed to schedule send: {e}")
                 self._send_queue.append(event)
         else:
             self._send_queue.append(event)
