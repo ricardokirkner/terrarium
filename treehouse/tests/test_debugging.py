@@ -993,3 +993,180 @@ async def test_step_through_sequence():
     debugger.resume()
     result = await task
     assert result == NodeStatus.SUCCESS
+
+
+@pytest.mark.asyncio
+async def test_step_with_breakpoint_sends_correct_events():
+    """Regression test: step() must send 'resumed' event immediately.
+
+    When a user clicks step, the visualizer should:
+    1. IMMEDIATELY receive 'resumed' event (with reason='step')
+    2. Then execution proceeds and pauses at next node
+    3. Receive 'paused' event
+
+    This ensures button states update correctly: clicking Step should
+    disable Resume/Step buttons immediately, then re-enable them when paused.
+
+    Bug: Before fix, step() didn't send 'resumed' event, so buttons stayed
+    in wrong state.
+    """
+    actions = [
+        SimpleAction("step1"),
+        SimpleAction("step2"),
+        SimpleAction("step3"),
+    ]
+    sequence = Sequence("workflow", actions)
+    tree = BehaviorTree(sequence)
+    debugger = DebuggerTree(tree, pause_before_start=True)
+
+    events_received = []
+
+    def handler(event_type, data):
+        events_received.append((event_type, data))
+
+    debugger.set_command_handler(handler)
+
+    # Set a breakpoint on step2 (though we won't reach it in this test)
+    root_name = getattr(tree.root, "name", type(tree.root).__name__)
+    step2_path = f"{root_name}/step2@1"
+    debugger.set_breakpoint(step2_path)
+
+    state = State()
+    task = asyncio.create_task(debugger.tick_async(state))
+    await asyncio.sleep(0.05)
+
+    # Should be paused before start
+    assert debugger.paused
+    events_received.clear()
+
+    # User clicks Step button - this is the critical moment
+    debugger.step()
+
+    # Don't wait for async execution - check events sent synchronously by
+    # step(). The 'resumed' event should be sent IMMEDIATELY by step()
+    event_types = [e[0] for e in events_received]
+    assert (
+        "resumed" in event_types
+    ), f"step() must send 'resumed' event immediately, got: {event_types}"
+
+    # Verify the resumed event has reason='step'
+    resumed_events = [e for e in events_received if e[0] == "resumed"]
+    assert (
+        resumed_events[0][1].get("reason") == "step"
+    ), f"Resumed event should have reason='step', got: {resumed_events[0][1]}"
+
+    # Now wait for async execution to proceed
+    await asyncio.sleep(0.1)
+
+    # Should be paused at first node after stepping
+    assert debugger.paused
+    paused_events = [e for e in events_received if e[0] == "paused"]
+    assert len(paused_events) > 0, "Should have paused event after step executes"
+    assert (
+        paused_events[0][1].get("reason") == "step"
+    ), "Should pause due to step mode at first node"
+
+    # Clean up - resume to completion
+    debugger.resume()
+    await asyncio.sleep(0.05)
+    debugger.resume()  # Resume again from breakpoint at step2
+    await asyncio.wait_for(task, timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_multi_tick_step_with_breakpoints():
+    """Regression test: multiple ticks with stepping and breakpoints.
+
+    Simulates the breakpoint_stepping.py scenario:
+    - Set a breakpoint
+    - Use step to advance through execution
+    - Verify paused/resumed events are sent correctly for each step
+
+    This tests the real-world workflow where users set breakpoints
+    and step through multiple ticks.
+    """
+    actions = [
+        SimpleAction("step1"),
+        SimpleAction("step2"),
+        SimpleAction("step3"),
+    ]
+    sequence = Sequence("workflow", actions)
+    tree = BehaviorTree(sequence)
+    debugger = DebuggerTree(tree, pause_before_start=True)
+
+    events_received = []
+
+    def handler(event_type, data):
+        events_received.append((event_type, data))
+
+    debugger.set_command_handler(handler)
+
+    # Set breakpoint on step2
+    root_name = getattr(tree.root, "name", type(tree.root).__name__)
+    step2_path = f"{root_name}/step2@1"
+    debugger.set_breakpoint(step2_path)
+
+    # Run first tick
+    state1 = State()
+    task1 = asyncio.create_task(debugger.tick_async(state1))
+    await asyncio.sleep(0.05)
+
+    assert debugger.paused  # Paused before start
+    events_received.clear()
+
+    # Step through first tick
+    debugger.step()  # Should send 'resumed' immediately
+    assert any(
+        e[0] == "resumed" and e[1].get("reason") == "step" for e in events_received
+    ), "step() should send resumed event"
+
+    await asyncio.sleep(0.05)
+    assert debugger.paused  # Paused at first node (workflow)
+
+    debugger.step()  # Step to step1
+    await asyncio.sleep(0.05)
+    assert debugger.paused
+
+    debugger.step()  # Step to step2 (has breakpoint)
+    await asyncio.sleep(0.05)
+    assert debugger.paused
+
+    # Should have hit the breakpoint
+    breakpoint_events = [
+        e
+        for e in events_received
+        if e[0] == "paused" and e[1].get("reason") == "breakpoint"
+    ]
+    assert len(breakpoint_events) > 0, "Should have paused at breakpoint"
+
+    # Resume to complete first tick
+    debugger.resume()
+    result1 = await asyncio.wait_for(task1, timeout=1.0)
+    assert result1 == NodeStatus.SUCCESS
+
+    # Verify we got tick_complete event
+    assert any(e[0] == "tick_complete" for e in events_received)
+
+    # Second tick - should work the same way
+    events_received.clear()
+    state2 = State()
+    task2 = asyncio.create_task(debugger.tick_async(state2))
+    await asyncio.sleep(0.05)
+
+    # Should NOT be paused (pause_before_start only applies to first tick)
+    # But should hit breakpoint immediately
+    await asyncio.sleep(0.1)
+
+    # Should be paused at step2 breakpoint
+    assert debugger.paused
+    breakpoint_events = [
+        e
+        for e in events_received
+        if e[0] == "paused" and e[1].get("reason") == "breakpoint"
+    ]
+    assert len(breakpoint_events) > 0, "Should pause at breakpoint on second tick"
+
+    # Resume to complete
+    debugger.resume()
+    result2 = await asyncio.wait_for(task2, timeout=1.0)
+    assert result2 == NodeStatus.SUCCESS
