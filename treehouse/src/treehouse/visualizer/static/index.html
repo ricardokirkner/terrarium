@@ -305,6 +305,12 @@
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .timeline-view.panning {
+            cursor: grabbing;
         }
 
         .timeline-header {
@@ -362,7 +368,7 @@
             background: var(--bg-secondary);
             border-radius: 999px;
             border: 1px solid var(--bg-tertiary);
-            overflow: visible;
+            overflow: hidden;
         }
 
         .timeline-bar {
@@ -418,6 +424,21 @@
             border-radius: 999px;
             z-index: 0;
             pointer-events: auto;
+        }
+
+        .timeline-tooltip {
+            position: fixed;
+            background: rgba(15, 23, 42, 0.95);
+            color: var(--text-primary);
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+            max-width: 280px;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            white-space: pre-line;
         }
 
         .timeline-bar.success { background: rgba(74, 222, 128, 0.8); }
@@ -694,6 +715,8 @@
         Treehouse Visualizer v0.1.0
     </footer>
 
+    <div id="timeline-tooltip" class="timeline-tooltip" style="display: none;"></div>
+
     <script>
         // State
         let ws = null;
@@ -705,6 +728,15 @@
         let isPaused = false;
         let currentExecutingNode = null; // The single node currently being evaluated
         let breakpoints = new Set(); // Set of node paths with breakpoints
+        let timelineZoom = 1;
+        let timelineOffset = 0;
+        let timelinePanActive = false;
+        let timelinePanStartX = 0;
+        let timelinePanStartOffset = 0;
+        let timelineSuppressClick = false;
+        let timelineRenderQueued = false;
+        let timelineInteractionsBound = false;
+        let timelinePanPointerId = null;
 
         // DOM elements
         const statusEl = document.getElementById('connection-status');
@@ -734,6 +766,7 @@
         const btnClearBreakpoints = document.getElementById('btn-clear-breakpoints');
         const debuggerStateSection = document.getElementById('debugger-state-section');
         const debuggerState = document.getElementById('debugger-state');
+        const timelineTooltip = document.getElementById('timeline-tooltip');
 
         // Connect to WebSocket
         function connect() {
@@ -1049,10 +1082,15 @@
                 treeContainer.querySelectorAll('.timeline-bar').forEach(bar => {
                     bar.addEventListener('click', (event) => {
                         event.stopPropagation();
+                        if (timelineSuppressClick) {
+                            timelineSuppressClick = false;
+                            return;
+                        }
                         const index = parseInt(bar.dataset.index);
                         selectNode(currentTrace.executions[index]);
                     });
                 });
+                setupTimelineInteractions();
                 return;
             }
 
@@ -1255,6 +1293,42 @@
             if (!ms || ms < 1) return '<1ms';
             if (ms < 1000) return ms.toFixed(0) + 'ms';
             return (ms / 1000).toFixed(2) + 's';
+        }
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function clampTimelineOffset(offset) {
+            const minOffset = -100 * (timelineZoom - 1);
+            const maxOffset = 0;
+            return clamp(offset, minOffset, maxOffset);
+        }
+
+        function setTimelineZoom(newZoom, focusPercent) {
+            const zoom = clamp(newZoom, 1, 6);
+            if (zoom === timelineZoom) {
+                return;
+            }
+            const oldZoom = timelineZoom;
+            timelineZoom = zoom;
+            const scale = zoom / oldZoom;
+            const focus = typeof focusPercent === 'number' ? focusPercent : 50;
+            timelineOffset = (timelineOffset - focus) * scale + focus;
+            timelineOffset = clampTimelineOffset(timelineOffset);
+        }
+
+        function scheduleTimelineRender() {
+            if (timelineRenderQueued) {
+                return;
+            }
+            timelineRenderQueued = true;
+            requestAnimationFrame(() => {
+                timelineRenderQueued = false;
+                if (currentView === 'timeline') {
+                    renderTree();
+                }
+            });
         }
 
         function formatCost(cost) {
@@ -1469,8 +1543,13 @@
             const traceStart = trace.start_time ? new Date(trace.start_time).getTime() : null;
             const traceEnd = trace.end_time ? new Date(trace.end_time).getTime() : null;
             const maxEnd = rows.reduce((max, row) => Math.max(max, row.end_ms), 0);
-            const nowMs = traceStart ? Date.now() - traceStart : maxEnd;
-            const totalDuration = traceEnd && traceStart ? traceEnd - traceStart : Math.max(maxEnd, nowMs, 1);
+            const totalDuration = traceEnd && traceStart ? traceEnd - traceStart : Math.max(maxEnd, 1);
+            const zoom = timelineZoom;
+            const offset = timelineOffset;
+
+            const visibleStartMs = clamp(((0 - offset) / (100 * zoom)) * totalDuration, 0, totalDuration);
+            const visibleEndMs = clamp(((100 - offset) / (100 * zoom)) * totalDuration, 0, totalDuration);
+            const visibleMidMs = (visibleStartMs + visibleEndMs) / 2;
 
             const orderMap = new Map(
                 orderExecutionsTopDown(trace.executions || []).map((item, orderIndex) => [
@@ -1492,9 +1571,9 @@
                 <div class="timeline-header">
                     <div>Total: ${formatDuration(totalDuration)}</div>
                     <div class="timeline-scale">
-                        <span>0</span>
-                        <span>${formatDuration(totalDuration / 2)}</span>
-                        <span>${formatDuration(totalDuration)}</span>
+                        <span>${formatDuration(visibleStartMs)}</span>
+                        <span>${formatDuration(visibleMidMs)}</span>
+                        <span>${formatDuration(visibleEndMs)}</span>
                     </div>
                 </div>
             `;
@@ -1507,8 +1586,8 @@
                 const gapEnd = row.start_ms;
                 const rawWidth = (row.duration_ms / totalDuration) * 100;
                 const isInstant = row.duration_ms <= 0.5;
-                const width = Math.max(rawWidth, 1.5);
-                const left = Math.min((row.start_ms / totalDuration) * 100, 100);
+                const width = Math.max(rawWidth * zoom, 1.5);
+                const left = ((row.start_ms / totalDuration) * 100) * zoom + offset;
                 const labelClass = width < 10 || isInstant
                     ? 'timeline-bar-label outside'
                     : 'timeline-bar-label inside';
@@ -1516,8 +1595,8 @@
                 const gapLabel = gapMs > 1
                     ? `<span class="timeline-gap" title="Gap after ${getNodeName(prevRow.path_in_tree)}">gap ${formatDuration(gapMs)}</span>`
                     : '';
-                const gapWidth = gapMs > 1 ? Math.max((gapMs / totalDuration) * 100, 0.5) : 0;
-                const gapLeft = gapMs > 1 ? Math.min((gapStart / totalDuration) * 100, 100) : 0;
+                const gapWidth = gapMs > 1 ? Math.max((gapMs / totalDuration) * 100 * zoom, 0.5) : 0;
+                const gapLeft = gapMs > 1 ? ((gapStart / totalDuration) * 100) * zoom + offset : 0;
                 const gapActive = gapMs > 1
                     ? rows.filter((item) => item.start_ms < gapEnd && item.end_ms > gapStart)
                         .map((item) => getNodeName(item.path_in_tree))
@@ -1537,8 +1616,8 @@
                             ${gapLabel}
                         </div>
                         <div class="timeline-track">
-                            ${gapMs > 1 ? `<div class="timeline-gap-bar" style="width: ${gapWidth}%; left: ${gapLeft}%;" title="${gapTitle}"></div>` : ''}
-                            <div class="${barClass}" style="width: ${width}%; left: ${left}%;" data-index="${row.index}" title="${name}">
+                            ${gapMs > 1 ? `<div class="timeline-gap-bar" style="width: ${gapWidth}%; left: ${gapLeft}%;" title="${gapTitle}" data-gap="${gapMs}" data-gap-start="${gapStart}" data-gap-end="${gapEnd}"></div>` : ''}
+                            <div class="${barClass}" style="width: ${width}%; left: ${left}%;" data-index="${row.index}" data-node="${name}" data-status="${row.status}" data-duration="${row.duration_ms}" data-start="${row.start_ms}" data-end="${row.end_ms}" title="${name}">
                                 <span class="${labelClass}">${name}</span>
                             </div>
                         </div>
@@ -1546,7 +1625,190 @@
                 `;
             }).join('');
 
-            return `<div class="timeline-view">${header}${html}</div>`;
+            const zoomLabel = zoom > 1 ? ` (zoom ${zoom.toFixed(1)}x)` : '';
+            return `<div class="timeline-view" data-zoom="${zoom}">${header}${html}<div class="timeline-hint" style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem;">Zoom: Alt+wheel, Pan: drag or Shift+wheel${zoomLabel}</div></div>`;
+        }
+
+        function setupTimelineInteractions() {
+            const timelineView = treeContainer.querySelector('.timeline-view');
+            if (!timelineView) {
+                return;
+            }
+
+            const timelineBars = timelineView.querySelectorAll('.timeline-bar');
+            const gapBars = timelineView.querySelectorAll('.timeline-gap-bar');
+
+            timelineBars.forEach((bar) => {
+                bar.addEventListener('mouseenter', (event) => {
+                    showTimelineTooltip(buildTimelineTooltip(bar.dataset), event);
+                });
+                bar.addEventListener('mousemove', updateTimelineTooltipPosition);
+                bar.addEventListener('mouseleave', hideTimelineTooltip);
+            });
+
+            gapBars.forEach((gap) => {
+                gap.addEventListener('mouseenter', (event) => {
+                    showTimelineTooltip(buildGapTooltip(gap.dataset), event);
+                });
+                gap.addEventListener('mousemove', updateTimelineTooltipPosition);
+                gap.addEventListener('mouseleave', hideTimelineTooltip);
+            });
+
+            timelineView.addEventListener('wheel', handleTimelineWheel, { passive: false });
+            timelineView.addEventListener('mousedown', handleTimelinePanStart);
+            timelineView.addEventListener('pointerdown', handleTimelinePanStart);
+            timelineView.addEventListener('pointermove', handleTimelinePanMove);
+            timelineView.addEventListener('pointerup', handleTimelinePanEnd);
+            timelineView.addEventListener('pointercancel', handleTimelinePanEnd);
+            timelineView.addEventListener('mouseleave', hideTimelineTooltip);
+
+            if (!timelineInteractionsBound) {
+                document.addEventListener('mousemove', handleTimelinePanMove);
+                document.addEventListener('mouseup', handleTimelinePanEnd);
+                timelineInteractionsBound = true;
+            }
+        }
+
+        function buildTimelineTooltip(data) {
+            const name = data.node || 'node';
+            const status = data.status || 'unknown';
+            const duration = formatDuration(parseFloat(data.duration || '0'));
+            const start = formatDuration(parseFloat(data.start || '0'));
+            const end = formatDuration(parseFloat(data.end || '0'));
+            return `${name} • ${status}\n${duration} (start ${start}, end ${end})`;
+        }
+
+        function buildGapTooltip(data) {
+            const gap = formatDuration(parseFloat(data.gap || '0'));
+            const start = formatDuration(parseFloat(data.gapStart || '0'));
+            const end = formatDuration(parseFloat(data.gapEnd || '0'));
+            return `Idle gap ${gap}\n${start} - ${end}`;
+        }
+
+        function showTimelineTooltip(content, event) {
+            if (!timelineTooltip) {
+                return;
+            }
+            timelineTooltip.textContent = content;
+            timelineTooltip.style.display = 'block';
+            updateTimelineTooltipPosition(event);
+        }
+
+        function updateTimelineTooltipPosition(event) {
+            if (!timelineTooltip || timelineTooltip.style.display === 'none') {
+                return;
+            }
+            const offset = 14;
+            const left = event.clientX + offset;
+            const top = event.clientY + offset;
+            timelineTooltip.style.left = `${left}px`;
+            timelineTooltip.style.top = `${top}px`;
+        }
+
+        function hideTimelineTooltip() {
+            if (!timelineTooltip) {
+                return;
+            }
+            timelineTooltip.style.display = 'none';
+        }
+
+        function handleTimelineWheel(event) {
+            if (currentView !== 'timeline') {
+                return;
+            }
+            const timelineView = treeContainer.querySelector('.timeline-view');
+            if (!timelineView) {
+                return;
+            }
+
+            if (event.altKey) {
+                event.preventDefault();
+                const rect = timelineView.getBoundingClientRect();
+                const focusPercent = ((event.clientX - rect.left) / rect.width) * 100;
+                const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+                setTimelineZoom(timelineZoom * zoomFactor, focusPercent);
+                scheduleTimelineRender();
+                return;
+            }
+
+            if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+                event.preventDefault();
+                const rect = timelineView.getBoundingClientRect();
+                const delta = event.deltaX || event.deltaY;
+                const deltaPercent = (delta / rect.width) * 100;
+                timelineOffset = clampTimelineOffset(timelineOffset - deltaPercent);
+                scheduleTimelineRender();
+            }
+        }
+
+        function handleTimelinePanStart(event) {
+            if (currentView !== 'timeline') {
+                return;
+            }
+            const timelineView = treeContainer.querySelector('.timeline-view');
+            if (!timelineView) {
+                return;
+            }
+            if (event.button !== undefined && event.button !== 0) {
+                return;
+            }
+            if (event.type === 'pointerdown') {
+                if (!event.isPrimary) {
+                    return;
+                }
+                timelinePanPointerId = event.pointerId;
+                if (timelineView.setPointerCapture) {
+                    timelineView.setPointerCapture(event.pointerId);
+                }
+            }
+            timelinePanActive = true;
+            timelinePanStartX = event.clientX;
+            timelinePanStartOffset = timelineOffset;
+            timelineSuppressClick = false;
+            hideTimelineTooltip();
+            timelineView.classList.add('panning');
+            event.preventDefault();
+        }
+
+        function handleTimelinePanMove(event) {
+            if (!timelinePanActive || currentView !== 'timeline') {
+                return;
+            }
+            const timelineView = treeContainer.querySelector('.timeline-view');
+            if (!timelineView) {
+                return;
+            }
+            if (event.type === 'pointermove' && timelinePanPointerId !== null) {
+                if (event.pointerId !== timelinePanPointerId) {
+                    return;
+                }
+            }
+            const rect = timelineView.getBoundingClientRect();
+            const deltaPx = event.clientX - timelinePanStartX;
+            if (Math.abs(deltaPx) > 3) {
+                timelineSuppressClick = true;
+            }
+            const deltaPercent = (deltaPx / rect.width) * 100;
+            timelineOffset = clampTimelineOffset(timelinePanStartOffset + deltaPercent);
+            scheduleTimelineRender();
+        }
+
+        function handleTimelinePanEnd(event) {
+            if (!timelinePanActive) {
+                return;
+            }
+            timelinePanActive = false;
+            if (event && event.type === 'pointerup' && timelinePanPointerId !== null) {
+                const timelineView = treeContainer.querySelector('.timeline-view');
+                if (timelineView && timelineView.releasePointerCapture) {
+                    timelineView.releasePointerCapture(timelinePanPointerId);
+                }
+                timelinePanPointerId = null;
+            }
+            const timelineView = treeContainer.querySelector('.timeline-view');
+            if (timelineView) {
+                timelineView.classList.remove('panning');
+            }
         }
 
         function escapeHtml(text) {
