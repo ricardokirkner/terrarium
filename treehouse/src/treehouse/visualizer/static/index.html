@@ -388,6 +388,12 @@
             z-index: 1;
         }
 
+        .timeline-bar.selected {
+            outline: 2px solid var(--accent);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+            z-index: 2;
+        }
+
         .timeline-bar.instant {
             min-width: 6px;
             width: 6px;
@@ -1079,17 +1085,6 @@
 
             if (currentView === 'timeline') {
                 treeContainer.innerHTML = renderTimeline(currentTrace);
-                treeContainer.querySelectorAll('.timeline-bar').forEach(bar => {
-                    bar.addEventListener('click', (event) => {
-                        event.stopPropagation();
-                        if (timelineSuppressClick) {
-                            timelineSuppressClick = false;
-                            return;
-                        }
-                        const index = parseInt(bar.dataset.index);
-                        selectNode(currentTrace.executions[index]);
-                    });
-                });
                 setupTimelineInteractions();
                 return;
             }
@@ -1567,6 +1562,8 @@
                 return a.start_ms - b.start_ms;
             });
 
+            const selectedPath = selectedNode ? selectedNode.path_in_tree : null;
+
             const header = `
                 <div class="timeline-header">
                     <div>Total: ${formatDuration(totalDuration)}</div>
@@ -1608,6 +1605,8 @@
                 const gapTitle = gapMs > 1
                     ? `Gap ${formatDuration(gapMs)} between ${getNodeName(prevRow.path_in_tree)} and ${name}. ${gapReason}`
                     : '';
+                const isSelected = selectedPath && row.path_in_tree === selectedPath;
+                const selectedClass = isSelected ? ' selected' : '';
 
                 return `
                     <div class="timeline-row" data-index="${row.index}">
@@ -1617,7 +1616,7 @@
                         </div>
                         <div class="timeline-track">
                             ${gapMs > 1 ? `<div class="timeline-gap-bar" style="width: ${gapWidth}%; left: ${gapLeft}%;" title="${gapTitle}" data-gap="${gapMs}" data-gap-start="${gapStart}" data-gap-end="${gapEnd}"></div>` : ''}
-                            <div class="${barClass}" style="width: ${width}%; left: ${left}%;" data-index="${row.index}" data-node="${name}" data-status="${row.status}" data-duration="${row.duration_ms}" data-start="${row.start_ms}" data-end="${row.end_ms}" title="${name}">
+                            <div class="${barClass}${selectedClass}" style="width: ${width}%; left: ${left}%;" data-index="${row.index}" data-node="${name}" data-status="${row.status}" data-duration="${row.duration_ms}" data-start="${row.start_ms}" data-end="${row.end_ms}" title="${name}">
                                 <span class="${labelClass}">${name}</span>
                             </div>
                         </div>
@@ -1661,6 +1660,7 @@
             timelineView.addEventListener('pointerup', handleTimelinePanEnd);
             timelineView.addEventListener('pointercancel', handleTimelinePanEnd);
             timelineView.addEventListener('mouseleave', hideTimelineTooltip);
+            timelineView.addEventListener('click', handleTimelineClick);
 
             if (!timelineInteractionsBound) {
                 document.addEventListener('mousemove', handleTimelinePanMove);
@@ -1767,7 +1767,6 @@
             timelineSuppressClick = false;
             hideTimelineTooltip();
             timelineView.classList.add('panning');
-            event.preventDefault();
         }
 
         function handleTimelinePanMove(event) {
@@ -1798,6 +1797,7 @@
                 return;
             }
             timelinePanActive = false;
+            timelineSuppressClick = false;
             if (event && event.type === 'pointerup' && timelinePanPointerId !== null) {
                 const timelineView = treeContainer.querySelector('.timeline-view');
                 if (timelineView && timelineView.releasePointerCapture) {
@@ -1808,6 +1808,22 @@
             const timelineView = treeContainer.querySelector('.timeline-view');
             if (timelineView) {
                 timelineView.classList.remove('panning');
+            }
+        }
+
+        function handleTimelineClick(event) {
+            if (timelineSuppressClick) {
+                timelineSuppressClick = false;
+                return;
+            }
+            const hit = document.elementFromPoint(event.clientX, event.clientY);
+            const bar = hit ? hit.closest('.timeline-bar') : null;
+            if (!bar) {
+                return;
+            }
+            const index = parseInt(bar.dataset.index);
+            if (!Number.isNaN(index)) {
+                selectNode(currentTrace.executions[index]);
             }
         }
 
