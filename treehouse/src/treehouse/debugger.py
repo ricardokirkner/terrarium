@@ -45,6 +45,7 @@ class DebuggerClient:
         auto_reconnect: bool = True,
         reconnect_delay: float = 2.0,
         command_handler: Any = None,
+        agent_name: str | None = None,
     ):
         """Initialize the debugger client.
 
@@ -59,6 +60,7 @@ class DebuggerClient:
         self.auto_reconnect = auto_reconnect
         self.reconnect_delay = reconnect_delay
         self.command_handler = command_handler
+        self.agent_name = agent_name
         self._ws: Any = None  # websockets.WebSocketClientProtocol
         self._connected = False
         self._connecting = False
@@ -93,6 +95,14 @@ class DebuggerClient:
             while self._send_queue:
                 event = self._send_queue.pop(0)
                 await self._send(event)
+
+            if self.agent_name:
+                await self._send(
+                    {
+                        "type": "agent_hello",
+                        "name": self.agent_name,
+                    }
+                )
 
             # Start receive loop if command handler is set
             if self.command_handler:

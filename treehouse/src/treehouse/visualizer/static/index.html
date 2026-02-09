@@ -53,6 +53,29 @@
             gap: 0.5rem;
             align-items: center;
         }
+
+        .agent-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .agent-selector label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+        }
+
+        .agent-selector select {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.75rem;
+            font-family: inherit;
+        }
         
         .control-button {
             background: var(--bg-tertiary);
@@ -721,6 +744,13 @@
             <button id="btn-step" class="control-button" disabled>⏭ Step</button>
             <button id="btn-clear-breakpoints" class="control-button danger" disabled>✕ Clear Breakpoints</button>
         </div>
+
+        <div class="agent-selector">
+            <label for="agent-select">Agent</label>
+            <select id="agent-select">
+                <option value="">No agents</option>
+            </select>
+        </div>
         
         <span id="connection-status" class="status-badge status-connecting">
             Connecting...
@@ -846,15 +876,14 @@
     <script>
         // State
         let ws = null;
-        let currentTrace = null;
-        let treeStructureNodes = []; // Store tree structure separately for resetting on each tick
+        let agentStates = new Map();
+        let agentInfo = new Map();
+        let currentAgentId = null;
+        let activeState = null;
         let selectedNode = null;
         let events = [];
-        let currentMetrics = null;
-        let isPaused = false;
-        let currentExecutingNode = null; // The single node currently being evaluated
-        let breakpoints = new Set(); // Set of node paths with breakpoints
-        let agentIdle = false;
+        let suppressRender = false;
+        let commandAgentIdOverride = null;
         let timelineZoom = 1;
         let timelineOffset = 0;
         let timelinePanActive = false;
@@ -871,6 +900,7 @@
         const nodeDetails = document.getElementById('node-details');
         const eventsLog = document.getElementById('events-log');
         const traceList = document.getElementById('trace-list');
+        const agentSelect = document.getElementById('agent-select');
         const refreshTracesButton = document.getElementById('refresh-traces');
         const exportTraceButton = document.getElementById('export-trace');
         const importTraceButton = document.getElementById('import-trace');
@@ -897,6 +927,99 @@
         const analysisTopCost = document.getElementById('analysis-top-cost');
         const analysisCostType = document.getElementById('analysis-cost-type');
         const analysisCostSparkline = document.getElementById('analysis-cost-sparkline');
+
+        function createAgentState() {
+            return {
+                currentTrace: null,
+                treeStructureNodes: [],
+                currentMetrics: null,
+                isPaused: false,
+                currentExecutingNode: null,
+                breakpoints: new Set(),
+                agentIdle: false,
+            };
+        }
+
+        function ensureAgentState(agentId) {
+            if (!agentStates.has(agentId)) {
+                agentStates.set(agentId, createAgentState());
+            }
+            return agentStates.get(agentId);
+        }
+
+        function formatAgentLabel(agentId) {
+            if (!agentId) {
+                return 'Agent';
+            }
+            const info = agentInfo.get(agentId) || {};
+            if (info.name) {
+                return info.name;
+            }
+            return `Agent ${agentId.slice(0, 6)}`;
+        }
+
+        function updateAgentSelect() {
+            const agents = Array.from(agentStates.keys());
+            agentSelect.innerHTML = '';
+
+            if (agents.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No agents';
+                agentSelect.appendChild(option);
+                return;
+            }
+
+            agents.forEach((agentId) => {
+                const option = document.createElement('option');
+                option.value = agentId;
+                option.textContent = formatAgentLabel(agentId);
+                if (agentId === currentAgentId) {
+                    option.selected = true;
+                }
+                agentSelect.appendChild(option);
+            });
+        }
+
+        function setActiveAgent(agentId, { render = true } = {}) {
+            if (!agentId) {
+                return;
+            }
+            activeState = ensureAgentState(agentId);
+            currentAgentId = agentId;
+            updateAgentSelect();
+            if (render) {
+                renderTree();
+                updateMetrics(activeState.currentMetrics);
+                updateDebuggerState(activeState.isPaused);
+                updateConnectionState(ws && ws.readyState === WebSocket.OPEN);
+            }
+        }
+
+        function withAgentState(agentId, shouldRender, fn) {
+            const prevState = activeState;
+            const prevSuppress = suppressRender;
+            const prevSelected = selectedNode;
+            const prevOverride = commandAgentIdOverride;
+            activeState = ensureAgentState(agentId);
+            suppressRender = !shouldRender;
+            commandAgentIdOverride = agentId;
+            if (!shouldRender) {
+                selectedNode = null;
+            }
+            try {
+                fn();
+            } finally {
+                suppressRender = prevSuppress;
+                activeState = prevState;
+                commandAgentIdOverride = prevOverride;
+                if (!shouldRender) {
+                    selectedNode = prevSelected;
+                }
+            }
+        }
+
+        activeState = createAgentState();
 
         // Connect to WebSocket
         function connect() {
@@ -951,121 +1074,224 @@
         // Handle incoming messages
         function handleMessage(message) {
             const type = message.type;
-            addEvent(type, message.data ? JSON.stringify(message.data).slice(0, 50) : '');
 
-            switch (type) {
-                case 'trace_state':
-                    currentTrace = message.data;
-                    if (currentTrace && currentTrace.metadata && currentTrace.metadata.tree_structure) {
-                        handleTreeStructure(currentTrace.metadata.tree_structure);
-                        currentTrace = mergeTraceWithStructure(currentTrace);
-                    } else if (treeStructureNodes.length > 0) {
-                        currentTrace = mergeTraceWithStructure(currentTrace);
+            if (type === 'agent_list') {
+                const agents = Array.isArray(message.agents) ? message.agents : [];
+                const incomingIds = new Set(
+                    agents.map((agent) => (typeof agent === 'string' ? agent : agent.id))
+                );
+                Array.from(agentStates.keys()).forEach((agentId) => {
+                    if (!incomingIds.has(agentId)) {
+                        agentStates.delete(agentId);
+                        agentInfo.delete(agentId);
                     }
-                    renderTree();
-                    updateMetrics();
-                    updateConnectionState(true);
-                    break;
+                });
+                agents.forEach((agent) => {
+                    const agentId = typeof agent === 'string' ? agent : agent.id;
+                    if (!agentId) {
+                        return;
+                    }
+                    ensureAgentState(agentId);
+                    if (typeof agent === 'object' && agent.name) {
+                        agentInfo.set(agentId, { name: agent.name });
+                    }
+                });
+                if (!currentAgentId && agents.length > 0) {
+                    const firstAgentId = typeof agents[0] === 'string' ? agents[0] : agents[0].id;
+                    if (firstAgentId) {
+                        setActiveAgent(firstAgentId, { render: false });
+                    }
+                }
+                updateAgentSelect();
+                return;
+            }
 
-                case 'metrics_update':
-                    currentMetrics = message.data;
-                    updateMetrics(currentMetrics);
-                    break;
+            if (type === 'agent_connected') {
+                if (message.agent_id) {
+                    ensureAgentState(message.agent_id);
+                    if (message.name) {
+                        agentInfo.set(message.agent_id, { name: message.name });
+                    }
+                    if (!currentAgentId) {
+                        setActiveAgent(message.agent_id, { render: false });
+                    }
+                    updateAgentSelect();
+                    addEvent('system', 'Agent connected', message.agent_id);
+                }
+                return;
+            }
 
-                case 'tree_structure':
-                    handleTreeStructure(message.data || message);
-                    break;
+            if (type === 'agent_info') {
+                if (message.agent_id) {
+                    agentInfo.set(message.agent_id, { name: message.name });
+                    updateAgentSelect();
+                    addEvent('system', 'Agent info updated', message.agent_id);
+                }
+                return;
+            }
 
-                case 'trace_start':
-                    // Reset executions to fresh tree structure for each new tick
-                    // This prevents accumulating duplicate nodes across ticks
-                    const freshExecutions = treeStructureNodes.length > 0 
-                        ? treeStructureNodes.map(node => ({...node, status: 'pending', start_time: null, timestamp: null, duration_ms: 0}))
-                        : [];
-                    
-                    currentTrace = {
-                        trace_id: message.trace_id,
-                        tick_id: message.tick_id,
-                        start_time: message.timestamp,
-                        executions: freshExecutions,
-                        status: 'running'
-                    };
-                    
-                    renderTree();
-                    updateMetrics();
-                    updateConnectionState(true);
-                    break;
-
-                case 'node_execution':
-                    if (currentTrace) {
-                        // Check if we already have this node (from tree structure or node_executing)
-                        const nodePath = message.data.path_in_tree || '';
-                        const existingNode = currentTrace.executions.find(e => e.path_in_tree === nodePath);
-                        
-                        if (existingNode) {
-                            // Update existing node with execution data, but preserve original node_type and node_name
-                            // from tree structure (e.g., keep "CounterAction" not "Action")
-                            const originalType = existingNode.node_type;
-                            const originalName = existingNode.node_name;
-                            Object.assign(existingNode, message.data);
-                            existingNode.node_type = originalType; // Restore specific class name
-                            existingNode.node_name = originalName; // Restore original name
+            if (type === 'agent_disconnected') {
+                if (message.agent_id) {
+                    agentStates.delete(message.agent_id);
+                    agentInfo.delete(message.agent_id);
+                    addEvent('system', 'Agent disconnected', message.agent_id);
+                    if (currentAgentId === message.agent_id) {
+                        const remaining = Array.from(agentStates.keys());
+                        currentAgentId = null;
+                        activeState = createAgentState();
+                        if (remaining.length > 0) {
+                            setActiveAgent(remaining[0], { render: true });
                         } else {
-                            // Only add if not already present (shouldn't happen with tree structure sent first)
-                            currentTrace.executions.push(message.data);
+                            updateAgentSelect();
+                            renderTree();
+                            updateMetrics();
+                            updateConnectionState(false);
+                        }
+                    } else {
+                        updateAgentSelect();
+                    }
+                }
+                return;
+            }
+
+            const agentId = message.agent_id || currentAgentId || 'default';
+            if (!currentAgentId) {
+                setActiveAgent(agentId, { render: false });
+            }
+            const isActive = agentId === currentAgentId;
+
+            withAgentState(agentId, isActive, () => {
+                addEvent(type, message.data ? JSON.stringify(message.data).slice(0, 50) : '', agentId);
+
+                switch (type) {
+                    case 'trace_state':
+                        activeState.currentTrace = message.data;
+                        if (
+                            activeState.currentTrace &&
+                            activeState.currentTrace.metadata &&
+                            activeState.currentTrace.metadata.tree_structure
+                        ) {
+                            handleTreeStructure(activeState.currentTrace.metadata.tree_structure);
+                            activeState.currentTrace = mergeTraceWithStructure(activeState.currentTrace);
+                        } else if (activeState.treeStructureNodes.length > 0) {
+                            activeState.currentTrace = mergeTraceWithStructure(activeState.currentTrace);
                         }
                         renderTree();
                         updateMetrics();
-                    }
-                    break;
+                        updateConnectionState(true);
+                        break;
 
-                case 'trace_complete':
-                    if (currentTrace) {
-                        currentTrace.end_time = message.timestamp;
-                        currentTrace.status = message.status;
-                        
+                    case 'metrics_update':
+                        activeState.currentMetrics = message.data;
+                        updateMetrics(activeState.currentMetrics);
+                        break;
+
+                    case 'tree_structure':
+                        handleTreeStructure(message.data || message);
+                        break;
+
+                    case 'trace_start':
+                        // Reset executions to fresh tree structure for each new tick
+                        // This prevents accumulating duplicate nodes across ticks
+                        const freshExecutions =
+                            activeState.treeStructureNodes.length > 0
+                                ? activeState.treeStructureNodes.map((node) => ({
+                                      ...node,
+                                      status: 'pending',
+                                      start_time: null,
+                                      timestamp: null,
+                                      duration_ms: 0,
+                                  }))
+                                : [];
+
+                        activeState.currentTrace = {
+                            trace_id: message.trace_id,
+                            tick_id: message.tick_id,
+                            start_time: message.timestamp,
+                            executions: freshExecutions,
+                            status: 'running',
+                        };
+
                         renderTree();
                         updateMetrics();
-                        fetchTraces();
-                    }
-                    break;
+                        updateConnectionState(true);
+                        break;
 
-                case 'paused':
-                    handlePausedEvent(message.data || message);
-                    // Don't call updateConnectionState - handlePausedEvent already updates button states
-                    break;
+                    case 'node_execution':
+                        if (activeState.currentTrace) {
+                            // Check if we already have this node (from tree structure or node_executing)
+                            const nodePath = message.data.path_in_tree || '';
+                            const existingNode = activeState.currentTrace.executions.find(
+                                (e) => e.path_in_tree === nodePath
+                            );
 
-                case 'agent_idle':
-                    handleAgentIdle(message.data || message);
-                    break;
+                            if (existingNode) {
+                                // Update existing node with execution data, but preserve original node_type and node_name
+                                // from tree structure (e.g., keep "CounterAction" not "Action")
+                                const originalType = existingNode.node_type;
+                                const originalName = existingNode.node_name;
+                                Object.assign(existingNode, message.data);
+                                existingNode.node_type = originalType; // Restore specific class name
+                                existingNode.node_name = originalName; // Restore original name
+                            } else {
+                                // Only add if not already present (shouldn't happen with tree structure sent first)
+                                activeState.currentTrace.executions.push(message.data);
+                            }
+                            renderTree();
+                            updateMetrics();
+                        }
+                        break;
 
-                case 'agent_active':
-                    handleAgentActive(message.data || message);
-                    break;
+                    case 'trace_complete':
+                        if (activeState.currentTrace) {
+                            activeState.currentTrace.end_time = message.timestamp;
+                            activeState.currentTrace.status = message.status;
 
-                case 'resumed':
-                    handleResumedEvent(message.data || message);
-                    // Don't call updateConnectionState - handleResumedEvent already updates button states
-                    break;
-                
-                case 'node_executing':
-                    handleNodeExecuting(message.data || message);
-                    break;
-                
-                case 'tick_complete':
-                    handleTickComplete(message.data || message);
-                    break;
-                
-                case 'execution_finished':
-                    handleExecutionFinished(message.data || message);
-                    break;
-            }
+                            renderTree();
+                            updateMetrics();
+                            fetchTraces();
+                        }
+                        break;
+
+                    case 'paused':
+                        handlePausedEvent(message.data || message);
+                        // Don't call updateConnectionState - handlePausedEvent already updates button states
+                        break;
+
+                    case 'agent_idle':
+                        handleAgentIdle(message.data || message);
+                        break;
+
+                    case 'agent_active':
+                        handleAgentActive(message.data || message);
+                        break;
+
+                    case 'resumed':
+                        handleResumedEvent(message.data || message);
+                        // Don't call updateConnectionState - handleResumedEvent already updates button states
+                        break;
+
+                    case 'node_executing':
+                        handleNodeExecuting(message.data || message);
+                        break;
+
+                    case 'tick_complete':
+                        handleTickComplete(message.data || message);
+                        break;
+
+                    case 'execution_finished':
+                        handleExecutionFinished(message.data || message);
+                        break;
+                }
+            });
         }
 
         // Add event to log
-        function addEvent(type, detail) {
+        function addEvent(type, detail, agentId = commandAgentIdOverride || currentAgentId) {
             const time = new Date().toLocaleTimeString();
-            events.unshift({ type, detail, time });
+            const agentLabel = agentId ? `${formatAgentLabel(agentId)}: ` : '';
+            const finalDetail = detail ? `${agentLabel}${detail}` : agentLabel.trim();
+            events.unshift({ type, detail: finalDetail, time });
             events = events.slice(0, 50); // Keep last 50 events
             renderEvents();
         }
@@ -1152,7 +1378,7 @@
                 if (trace.metadata && trace.metadata.tree_structure) {
                     handleTreeStructure(trace.metadata.tree_structure);
                 }
-                currentTrace = treeStructureNodes.length > 0
+                activeState.currentTrace = activeState.treeStructureNodes.length > 0
                     ? mergeTraceWithStructure(trace)
                     : trace;
                 renderTree();
@@ -1225,7 +1451,10 @@
 
         // Render tree visualization
         function renderTree() {
-            if (!currentTrace || !currentTrace.executions || currentTrace.executions.length === 0) {
+            if (suppressRender) {
+                return;
+            }
+            if (!activeState.currentTrace || !activeState.currentTrace.executions || activeState.currentTrace.executions.length === 0) {
                 treeContainer.innerHTML = `
                     <div class="empty-state">
                         <p>Waiting for agent connection...</p>
@@ -1238,19 +1467,19 @@
             }
 
             if (currentView === 'timeline') {
-                treeContainer.innerHTML = renderTimeline(currentTrace);
+                treeContainer.innerHTML = renderTimeline(activeState.currentTrace);
                 setupTimelineInteractions();
                 return;
             }
 
-            const orderedExecutions = orderExecutionsTopDown(currentTrace.executions);
+            const orderedExecutions = orderExecutionsTopDown(activeState.currentTrace.executions);
             const html = orderedExecutions.map(({ execution, index }) => {
                 const exec = execution;
                 const depth = getDepth(exec.path_in_tree);
                 const indent = depth * 24;
                 const isSelected = selectedNode && selectedNode.node_id === exec.node_id;
                 const hasBreak = hasBreakpoint(exec.path_in_tree);
-                const isExecuting = isPaused && currentExecutingNode === exec.path_in_tree;
+                const isExecuting = activeState.isPaused && activeState.currentExecutingNode === exec.path_in_tree;
                 const duration = exec.duration_ms > 0 ? formatDuration(exec.duration_ms) : '';
 
                 return `
@@ -1282,7 +1511,7 @@
                         return;
                     }
                     const index = parseInt(node.dataset.index);
-                    selectNode(currentTrace.executions[index]);
+                    selectNode(activeState.currentTrace.executions[index]);
                 });
             });
             
@@ -1390,7 +1619,10 @@
         }
 
         function updateMetrics(metricsData = null) {
-            const metrics = metricsData || calculateMetrics(currentTrace);
+            if (suppressRender) {
+                return;
+            }
+            const metrics = metricsData || calculateMetrics(activeState.currentTrace);
             if (!metrics) {
                 metricTrace.textContent = '-';
                 metricStatus.textContent = 'Status: -';
@@ -1419,7 +1651,7 @@
 
             metricCost.textContent = formatCost(metrics.total_cost);
             metricCostBreakdown.textContent = 'USD total';
-            renderCostAnalysis(metrics, currentTrace);
+            renderCostAnalysis(metrics, activeState.currentTrace);
         }
 
         // Utility functions
@@ -1526,10 +1758,10 @@
                 analysisTopCost.querySelectorAll('.analysis-row').forEach((row) => {
                     row.addEventListener('click', () => {
                         const path = row.dataset.path;
-                        if (!path || !currentTrace) {
+                        if (!path || !activeState.currentTrace) {
                             return;
                         }
-                        const execution = currentTrace.executions.find((item) => item.path_in_tree === path);
+                        const execution = activeState.currentTrace.executions.find((item) => item.path_in_tree === path);
                         if (execution) {
                             selectNode(execution);
                         }
@@ -1722,8 +1954,8 @@
 
         function orderExecutionsTopDown(executions) {
             const structureOrder = new Map();
-            if (treeStructureNodes.length > 0) {
-                treeStructureNodes.forEach((node, index) => {
+            if (activeState.treeStructureNodes.length > 0) {
+                activeState.treeStructureNodes.forEach((node, index) => {
                     if (node.path_in_tree) {
                         structureOrder.set(node.path_in_tree, index);
                     }
@@ -2169,7 +2401,7 @@
             }
             const index = parseInt(bar.dataset.index);
             if (!Number.isNaN(index)) {
-                selectNode(currentTrace.executions[index]);
+                selectNode(activeState.currentTrace.executions[index]);
             }
         }
 
@@ -2182,12 +2414,18 @@
         // Debugger control functions
         function sendDebuggerCommand(type, data = {}) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type, data }));
+                const targetAgentId = commandAgentIdOverride || currentAgentId;
+                const payload = targetAgentId ? { type, data, agent_id: targetAgentId } : { type, data };
+                ws.send(JSON.stringify(payload));
             }
         }
 
         function updateDebuggerState(paused) {
-            isPaused = paused;
+            activeState.isPaused = paused;
+
+            if (suppressRender) {
+                return;
+            }
             
             // Update button states
             btnPause.disabled = paused;
@@ -2200,14 +2438,14 @@
 
         function handlePausedEvent(data) {
             updateDebuggerState(true);
-            agentIdle = false;
+            activeState.agentIdle = false;
             const reason = data.reason || 'unknown';
             const nodePath = data.node_path || data.current_node || '';
             const note = data.note || '';
             addEvent('debugger', `Paused: ${reason} ${nodePath ? `at ${nodePath}` : ''}`);
             
             // Highlight the specific node where we paused
-            currentExecutingNode = nodePath || null;
+            activeState.currentExecutingNode = nodePath || null;
             renderTree(); // Re-render to show highlight
             
             // Banner removed - node highlighting is sufficient
@@ -2215,6 +2453,9 @@
             // Show debugger state
             const debuggerStateSection = document.getElementById('debugger-state-section');
             const debuggerState = document.getElementById('debugger-state');
+            if (suppressRender) {
+                return;
+            }
             if (debuggerStateSection && debuggerState) {
                 debuggerStateSection.style.display = 'block';
                 let html = '<div style="margin-bottom: 0.5rem;"><strong>⏸ Execution Paused</strong></div>';
@@ -2247,7 +2488,7 @@
                 addEvent('debugger', 'Step initiated');
                 return;
             }
-            if (agentIdle) {
+            if (activeState.agentIdle) {
                 addEvent('debugger', 'Resume queued (waiting for input)');
                 return;
             }
@@ -2255,24 +2496,30 @@
             addEvent('debugger', 'Resumed execution');
             
             // Clear the executing node highlight
-            currentExecutingNode = null;
+            activeState.currentExecutingNode = null;
             renderTree();
             
             // Hide debugger state
             const debuggerStateSection = document.getElementById('debugger-state-section');
+            if (suppressRender) {
+                return;
+            }
             if (debuggerStateSection) {
                 debuggerStateSection.style.display = 'none';
             }
         }
 
         function handleAgentIdle(data) {
-            agentIdle = true;
-            if (isPaused) {
+            activeState.agentIdle = true;
+            if (activeState.isPaused) {
                 return;
             }
             const note = data.note || 'Awaiting user input';
             addEvent('debugger', 'Idle: waiting for input');
 
+            if (suppressRender) {
+                return;
+            }
             if (debuggerStateSection && debuggerState) {
                 debuggerStateSection.style.display = 'block';
                 debuggerState.innerHTML = `
@@ -2283,8 +2530,11 @@
         }
 
         function handleAgentActive(data) {
-            agentIdle = false;
-            if (isPaused) {
+            activeState.agentIdle = false;
+            if (activeState.isPaused) {
+                return;
+            }
+            if (suppressRender) {
                 return;
             }
             if (debuggerStateSection && debuggerState) {
@@ -2320,19 +2570,19 @@
             flattenTree(treeData);
             
             // Store the tree structure for resetting on each tick
-            treeStructureNodes = executions;
+            activeState.treeStructureNodes = executions;
             
             // Initialize currentTrace if it doesn't exist
-            if (!currentTrace) {
-                currentTrace = {
+            if (!activeState.currentTrace) {
+                activeState.currentTrace = {
                     trace_id: 'structure-' + Date.now(),
                     tick_id: 0,
                     executions: [...executions], // Use a copy
                     status: 'pending'
                 };
-            } else if (!currentTrace.executions || currentTrace.executions.length === 0) {
+            } else if (!activeState.currentTrace.executions || activeState.currentTrace.executions.length === 0) {
                 // Update existing trace with fresh structure if empty
-                currentTrace.executions = [...executions]; // Use a copy
+                activeState.currentTrace.executions = [...executions]; // Use a copy
             }
             
             renderTree();
@@ -2340,8 +2590,8 @@
             updateConnectionState(true);
             
             // Re-send any existing breakpoints to the new agent
-            if (breakpoints.size > 0) {
-                const breakpointPaths = Array.from(breakpoints);
+            if (activeState.breakpoints.size > 0) {
+                const breakpointPaths = Array.from(activeState.breakpoints);
                 addEvent('debugger', `Re-sending ${breakpointPaths.length} breakpoint(s) to agent`);
                 breakpointPaths.forEach(nodePath => {
                     sendDebuggerCommand('set_breakpoint', { node_path: nodePath });
@@ -2353,11 +2603,11 @@
             if (!trace || !Array.isArray(trace.executions)) {
                 return trace;
             }
-            if (treeStructureNodes.length === 0) {
+            if (activeState.treeStructureNodes.length === 0) {
                 return trace;
             }
 
-            const baseNodes = treeStructureNodes.map(node => ({ ...node }));
+            const baseNodes = activeState.treeStructureNodes.map(node => ({ ...node }));
             const byPath = new Map();
             baseNodes.forEach((node, index) => {
                 if (node.path_in_tree) {
@@ -2391,14 +2641,14 @@
             const nodeType = data.node_type || '';
             
             // Update the currently executing node for highlighting
-            currentExecutingNode = nodePath;
+            activeState.currentExecutingNode = nodePath;
             
             // Update or add this node to the current trace
-            if (currentTrace) {
+            if (activeState.currentTrace) {
                 // Find all nodes with this path (there should only be one, but check for duplicates)
                 let existingNode = null;
                 let duplicateIndices = [];
-                currentTrace.executions.forEach((e, index) => {
+                activeState.currentTrace.executions.forEach((e, index) => {
                     if (e.path_in_tree === nodePath) {
                         if (!existingNode) {
                             existingNode = e;
@@ -2413,7 +2663,7 @@
                     console.warn(`Found ${duplicateIndices.length} duplicate nodes for path ${nodePath}, removing duplicates`);
                     // Remove from highest index to lowest to avoid index shifting
                     duplicateIndices.reverse().forEach(index => {
-                        currentTrace.executions.splice(index, 1);
+                        activeState.currentTrace.executions.splice(index, 1);
                     });
                 }
                 
@@ -2427,7 +2677,7 @@
                 } else {
                     // This shouldn't happen if tree structure was sent, but add as fallback
                     console.warn(`No existing node found for path ${nodePath}, adding new entry`);
-                    currentTrace.executions.push({
+                    activeState.currentTrace.executions.push({
                         node_id: nodeName,
                         node_name: nodeName,
                         node_type: nodeType,
@@ -2448,8 +2698,8 @@
             addEvent('execution', `Tick completed: ${data.status || 'unknown'}`);
             
             // Mark running nodes as complete and reset to pending for next tick
-            if (currentTrace && currentTrace.executions) {
-                currentTrace.executions.forEach(exec => {
+            if (activeState.currentTrace && activeState.currentTrace.executions) {
+                activeState.currentTrace.executions.forEach(exec => {
                     // Reset nodes to pending state for next tick
                     exec.status = 'pending';
                     exec.start_time = null;
@@ -2459,7 +2709,7 @@
             }
             
             // Clear currently executing node
-            currentExecutingNode = null;
+            activeState.currentExecutingNode = null;
             renderTree();
         }
         
@@ -2467,11 +2717,14 @@
             addEvent('execution', `🎉 Execution finished! Total ticks: ${data.total_ticks || 'unknown'}`);
             
             // Clear state
-            isPaused = false;
-            currentExecutingNode = null;
+            activeState.isPaused = false;
+            activeState.currentExecutingNode = null;
             renderTree();
             
             // Disable all debugger buttons - execution is finished
+            if (suppressRender) {
+                return;
+            }
             btnPause.disabled = true;
             btnResume.disabled = true;
             btnStep.disabled = true;
@@ -2508,14 +2761,14 @@
 
         // Breakpoint management
         function toggleBreakpoint(nodePath) {
-            if (breakpoints.has(nodePath)) {
+            if (activeState.breakpoints.has(nodePath)) {
                 // Remove breakpoint
-                breakpoints.delete(nodePath);
+                activeState.breakpoints.delete(nodePath);
                 sendDebuggerCommand('clear_breakpoint', { node_path: nodePath });
                 addEvent('debugger', `Removed breakpoint at ${nodePath}`);
             } else {
                 // Add breakpoint
-                breakpoints.add(nodePath);
+                activeState.breakpoints.add(nodePath);
                 sendDebuggerCommand('set_breakpoint', { node_path: nodePath });
                 addEvent('debugger', `Set breakpoint at ${nodePath}`);
             }
@@ -2524,7 +2777,7 @@
         }
 
         function hasBreakpoint(nodePath) {
-            return breakpoints.has(nodePath);
+            return activeState.breakpoints.has(nodePath);
         }
 
         // Start connection
@@ -2534,6 +2787,15 @@
 
         refreshTracesButton.addEventListener('click', () => {
             fetchTraces();
+        });
+
+        agentSelect.addEventListener('change', () => {
+            const agentId = agentSelect.value;
+            if (!agentId) {
+                return;
+            }
+            setActiveAgent(agentId, { render: true });
+            addEvent('system', `Switched to ${formatAgentLabel(agentId)}`, agentId);
         });
 
         let currentView = 'tree';
@@ -2552,11 +2814,11 @@
         });
 
         exportTraceButton.addEventListener('click', () => {
-            if (!currentTrace || !currentTrace.trace_id) {
+            if (!activeState.currentTrace || !activeState.currentTrace.trace_id) {
                 addEvent('error', 'No trace selected to export');
                 return;
             }
-            exportTrace(currentTrace.trace_id);
+            exportTrace(activeState.currentTrace.trace_id);
         });
 
         importTraceButton.addEventListener('click', () => {
@@ -2588,7 +2850,7 @@
         });
 
         btnClearBreakpoints.addEventListener('click', () => {
-            breakpoints.clear();
+            activeState.breakpoints.clear();
             sendDebuggerCommand('clear_all_breakpoints');
             addEvent('debugger', 'Cleared all breakpoints');
             renderTree(); // Re-render to remove breakpoint indicators
@@ -2597,11 +2859,14 @@
 
         // Enable buttons when connected
         function updateConnectionState(connected) {
-            const hasTrace = connected && (currentTrace || treeStructureNodes.length > 0);
-            btnPause.disabled = !hasTrace || isPaused;
-            btnResume.disabled = !hasTrace || !isPaused;
-            btnStep.disabled = !hasTrace || !isPaused;
-            btnClearBreakpoints.disabled = breakpoints.size === 0;
+            if (suppressRender) {
+                return;
+            }
+            const hasTrace = connected && (activeState.currentTrace || activeState.treeStructureNodes.length > 0);
+            btnPause.disabled = !hasTrace || activeState.isPaused;
+            btnResume.disabled = !hasTrace || !activeState.isPaused;
+            btnStep.disabled = !hasTrace || !activeState.isPaused;
+            btnClearBreakpoints.disabled = activeState.breakpoints.size === 0;
         }
     </script>
 </body>

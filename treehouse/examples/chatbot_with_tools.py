@@ -369,6 +369,11 @@ async def main():  # noqa: C901
         default="ws://localhost:8000/ws/agent",
         help="Visualizer server WebSocket URL",
     )
+    parser.add_argument(
+        "--agent-name",
+        default="chatbot_with_tools.py",
+        help="Visualizer agent name",
+    )
     args = parser.parse_args()
 
     if args.mock:
@@ -429,6 +434,7 @@ async def main():  # noqa: C901
         debugger_client = DebuggerClient(
             url=args.server,
             command_handler=debugger_tree,
+            agent_name=args.agent_name,
         )
         connected = await debugger_client.connect()
         if not connected:

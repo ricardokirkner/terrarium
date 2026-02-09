@@ -39,9 +39,11 @@ def _trace(trace_id: str) -> ExecutionTrace:
 def client(tmp_path, monkeypatch):
     storage = TraceStorage(db_path=tmp_path / "traces.db")
     monkeypatch.setattr(server, "storage", storage)
-    server.manager.current_trace = None
     server.manager.viewers = []
-    server.manager.agents = []
+    server.manager.agents = {}
+    server.manager.agent_by_socket = {}
+    server.manager.agent_state = {}
+    server.manager.agent_info = {}
     with TestClient(server.app) as test_client:
         yield test_client
 
@@ -119,7 +121,7 @@ def test_metrics_from_invalid_state():
 
 def test_health_endpoint_counts(client):
     server.manager.viewers = cast(list, [object(), object()])
-    server.manager.agents = cast(list, [object()])
+    server.manager.agents = {"agent-1": object()}
 
     response = client.get("/health")
     assert response.status_code == 200
@@ -134,13 +136,19 @@ async def test_connect_viewer_sends_state_and_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "storage", storage)
 
     manager = server.ConnectionManager()
-    manager.current_trace = {
-        "trace_id": "trace-5",
-        "tick_id": 1,
-        "start_time": datetime.now(timezone.utc).isoformat(),
-        "executions": [],
-        "status": "running",
+    manager.agent_state = {
+        "agent-1": {
+            "current_trace": {
+                "trace_id": "trace-5",
+                "tick_id": 1,
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "executions": [],
+                "status": "running",
+            },
+            "tree_structure": None,
+        }
     }
+    manager.agent_info = {"agent-1": {"name": None}}
 
     class FakeViewer:
         def __init__(self) -> None:
@@ -158,6 +166,7 @@ async def test_connect_viewer_sends_state_and_metrics(tmp_path, monkeypatch):
 
     assert viewer.accepted is True
     types = [message["type"] for message in viewer.messages]
+    assert "agent_list" in types
     assert "trace_state" in types
     assert "metrics_update" in types
 
@@ -179,14 +188,16 @@ async def test_handle_agent_event_broadcasts_and_saves(tmp_path, monkeypatch):
     manager.viewers = cast(list, [viewer])
 
     await manager.handle_agent_event(
+        "agent-1",
         {
             "type": "trace_start",
             "trace_id": "trace-4",
             "tick_id": 1,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        },
     )
     await manager.handle_agent_event(
+        "agent-1",
         {
             "type": "node_execution",
             "data": {
@@ -199,14 +210,15 @@ async def test_handle_agent_event_broadcasts_and_saves(tmp_path, monkeypatch):
                 "status": "success",
                 "duration_ms": 1.0,
             },
-        }
+        },
     )
     await manager.handle_agent_event(
+        "agent-1",
         {
             "type": "trace_complete",
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        },
     )
 
     types = {message.get("type") for message in viewer.messages}
@@ -233,12 +245,13 @@ async def test_connect_agent_and_disconnect(tmp_path, monkeypatch):
             self.accepted = True
 
     agent = FakeAgent()
-    await manager.connect_agent(agent)  # type: ignore[arg-type]
+    agent_id = await manager.connect_agent(agent)  # type: ignore[arg-type]
     assert agent.accepted is True
-    assert agent in manager.agents
+    assert agent_id in manager.agents
+    assert manager.agents[agent_id] is agent
 
     manager.disconnect_agent(agent)  # type: ignore[arg-type]
-    assert agent not in manager.agents
+    assert agent_id not in manager.agents
 
 
 @pytest.mark.asyncio
@@ -308,9 +321,13 @@ async def test_viewer_websocket_disconnect():
         def __init__(self) -> None:
             self.accepted = False
             self.disconnect_on_receive = True
+            self.messages: list[dict] = []
 
         async def accept(self) -> None:
             self.accepted = True
+
+        async def send_json(self, message: dict) -> None:
+            self.messages.append(message)
 
         async def receive_text(self) -> str:
             if self.disconnect_on_receive:
@@ -337,9 +354,13 @@ async def test_viewer_websocket_exception():
     class FakeViewerWS:
         def __init__(self) -> None:
             self.accepted = False
+            self.messages: list[dict] = []
 
         async def accept(self) -> None:
             self.accepted = True
+
+        async def send_json(self, message: dict) -> None:
+            self.messages.append(message)
 
         async def receive_text(self) -> str:
             raise RuntimeError("test error")
@@ -371,7 +392,7 @@ async def test_agent_websocket_disconnect():
             raise WebSocketDisconnect()
 
     agent_ws = FakeAgentWS()
-    manager.agents = []
+    manager.agents = {}
 
     # Run the websocket handler which should handle disconnect
     try:
@@ -398,7 +419,7 @@ async def test_agent_websocket_exception():
             raise RuntimeError("test error")
 
     agent_ws = FakeAgentWS()
-    manager.agents = []
+    manager.agents = {}
 
     # Run the websocket handler which should handle exception
     await server.agent_websocket(agent_ws)  # type: ignore[arg-type]
@@ -451,8 +472,8 @@ async def test_broadcast_to_agents_cleanup():
 
     good = GoodAgent()
     bad = BadAgent()
-    manager.agents = cast(list, [good, bad])
+    manager.agents = {"good": good, "bad": bad}
 
     await manager.broadcast_to_agents({"type": "test"})
-    assert good in manager.agents
-    assert bad not in manager.agents
+    assert manager.agents.get("good") is good
+    assert "bad" not in manager.agents
