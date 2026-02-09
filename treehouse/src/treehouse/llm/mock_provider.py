@@ -30,6 +30,8 @@ class MockConfig:
         fail_after: Fail after N successful calls (None = never fail).
         failure_error: The error to raise when failing.
         response_callback: Optional callback for dynamic responses.
+        cost_per_1k_tokens: Simulated cost per 1k tokens (USD).
+        cost_per_call: Fixed cost added to every response (USD).
     """
 
     default_response: str = "This is a mock response."
@@ -38,6 +40,8 @@ class MockConfig:
     fail_after: int | None = None
     failure_error: LLMError | None = None
     response_callback: Callable[[LLMRequest], str] | None = None
+    cost_per_1k_tokens: float = 0.0
+    cost_per_call: float = 0.0
 
 
 class MockLLMProvider(LLMProvider):
@@ -125,6 +129,8 @@ class MockLLMProvider(LLMProvider):
         if request.system_prompt:
             prompt_tokens += self.count_tokens(request.system_prompt)
         completion_tokens = self.count_tokens(content)
+        total_tokens = prompt_tokens + completion_tokens
+        cost = self._calculate_cost(total_tokens)
 
         return LLMResponse(
             content=content,
@@ -132,10 +138,10 @@ class MockLLMProvider(LLMProvider):
             tokens_used={
                 "prompt": prompt_tokens,
                 "completion": completion_tokens,
-                "total": prompt_tokens + completion_tokens,
+                "total": total_tokens,
             },
             model=self._model,
-            cost=0.0,  # Mock is free
+            cost=cost,
             latency_ms=elapsed_ms,
             raw_response={"mock": True, "request": request.prompt},
         )
@@ -152,6 +158,12 @@ class MockLLMProvider(LLMProvider):
                 return response
 
         return self._config.default_response
+
+    def _calculate_cost(self, total_tokens: int) -> float:
+        if self._config.cost_per_1k_tokens <= 0 and self._config.cost_per_call <= 0:
+            return 0.0
+        token_cost = (total_tokens / 1000) * self._config.cost_per_1k_tokens
+        return self._config.cost_per_call + token_cost
 
     def reset(self) -> None:
         """Reset call count and recorded requests."""

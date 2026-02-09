@@ -155,6 +155,105 @@
             gap: 1rem;
         }
 
+        .analysis-panel {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--bg-tertiary);
+            padding: 1.5rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+
+        .analysis-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .analysis-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+        }
+
+        .analysis-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .analysis-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.5rem;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .analysis-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.1rem;
+        }
+
+        .analysis-label span {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .analysis-bar {
+            position: relative;
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .analysis-bar-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.8), rgba(14, 165, 233, 0.8));
+        }
+
+        .analysis-empty {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            text-align: center;
+            padding: 1rem 0;
+        }
+
+        .analysis-row.clickable {
+            cursor: pointer;
+        }
+
+        .analysis-row.clickable:hover {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 0.35rem;
+            margin: -0.35rem;
+        }
+
+        .analysis-sparkline {
+            width: 100%;
+            height: 70px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 0.5rem;
+            box-sizing: border-box;
+        }
+
+        .analysis-sparkline svg {
+            width: 100%;
+            height: 100%;
+        }
+
         .metric-card {
             background: var(--bg-primary);
             border: 1px solid var(--bg-tertiary);
@@ -717,6 +816,27 @@
         </div>
     </section>
 
+    <section class="analysis-panel" id="analysis-panel">
+        <div class="analysis-card">
+            <div class="analysis-title">Top Cost Nodes</div>
+            <div class="analysis-list" id="analysis-top-cost">
+                <div class="analysis-empty">No cost data yet</div>
+            </div>
+        </div>
+        <div class="analysis-card">
+            <div class="analysis-title">Cost by Node Type</div>
+            <div class="analysis-list" id="analysis-cost-type">
+                <div class="analysis-empty">No cost data yet</div>
+            </div>
+        </div>
+        <div class="analysis-card">
+            <div class="analysis-title">Cumulative Cost</div>
+            <div class="analysis-sparkline" id="analysis-cost-sparkline">
+                <div class="analysis-empty">No cost data yet</div>
+            </div>
+        </div>
+    </section>
+
     <footer>
         Treehouse Visualizer v0.1.0
     </footer>
@@ -773,6 +893,9 @@
         const debuggerStateSection = document.getElementById('debugger-state-section');
         const debuggerState = document.getElementById('debugger-state');
         const timelineTooltip = document.getElementById('timeline-tooltip');
+        const analysisTopCost = document.getElementById('analysis-top-cost');
+        const analysisCostType = document.getElementById('analysis-cost-type');
+        const analysisCostSparkline = document.getElementById('analysis-cost-sparkline');
 
         // Connect to WebSocket
         function connect() {
@@ -1248,6 +1371,7 @@
                 metricTokenBreakdown.textContent = 'Prompt/Completion';
                 metricCost.textContent = '-';
                 metricCostBreakdown.textContent = 'USD';
+                renderCostAnalysis(null, null);
                 return;
             }
 
@@ -1264,6 +1388,7 @@
 
             metricCost.textContent = formatCost(metrics.total_cost);
             metricCostBreakdown.textContent = 'USD total';
+            renderCostAnalysis(metrics, currentTrace);
         }
 
         // Utility functions
@@ -1332,6 +1457,162 @@
             return '$' + cost.toFixed(2);
         }
 
+        function renderCostAnalysis(metrics, trace) {
+            if (!analysisTopCost || !analysisCostType || !analysisCostSparkline) {
+                return;
+            }
+            if (!metrics || !trace) {
+                analysisTopCost.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+                analysisCostType.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+                analysisCostSparkline.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+                return;
+            }
+
+            const costAnalysis = calculateCostAnalysis(trace, metrics);
+            const topNodes = costAnalysis.top_cost_nodes;
+            if (!topNodes.length) {
+                analysisTopCost.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+            } else {
+                const maxCost = topNodes[0].cost || 1;
+                analysisTopCost.innerHTML = topNodes
+                    .map((node) => {
+                        const label = getNodeName(node.path_in_tree);
+                        const percent = maxCost > 0 ? (node.cost / maxCost) * 100 : 0;
+                        const subtitle = `${node.node_type} • ${formatDuration(node.duration_ms)}`;
+                        const path = node.path_in_tree || '';
+                        return `
+                            <div class="analysis-row clickable" data-path="${path}">
+                                <div class="analysis-label">
+                                    <strong>${label || node.node_id}</strong>
+                                    <span>${subtitle}</span>
+                                    <div class="analysis-bar"><div class="analysis-bar-fill" style="width: ${percent}%;"></div></div>
+                                </div>
+                                <div>${formatCost(node.cost)}</div>
+                            </div>
+                        `;
+                    })
+                    .join('');
+                analysisTopCost.querySelectorAll('.analysis-row').forEach((row) => {
+                    row.addEventListener('click', () => {
+                        const path = row.dataset.path;
+                        if (!path || !currentTrace) {
+                            return;
+                        }
+                        const execution = currentTrace.executions.find((item) => item.path_in_tree === path);
+                        if (execution) {
+                            selectNode(execution);
+                        }
+                    });
+                });
+            }
+
+            const byType = costAnalysis.cost_by_type;
+            const totalCost = costAnalysis.total_cost || 0;
+            if (!byType.length) {
+                analysisCostType.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+            } else {
+                analysisCostType.innerHTML = byType
+                    .map((item) => {
+                        const percent = totalCost > 0 ? (item.cost / totalCost) * 100 : 0;
+                        return `
+                            <div class="analysis-row">
+                                <div class="analysis-label">
+                                    <strong>${item.node_type}</strong>
+                                    <span>${item.count} nodes</span>
+                                    <div class="analysis-bar"><div class="analysis-bar-fill" style="width: ${percent}%;"></div></div>
+                                </div>
+                                <div>${formatCost(item.cost)}</div>
+                            </div>
+                        `;
+                    })
+                    .join('');
+            }
+
+            const points = costAnalysis.cumulative_cost_points;
+            if (!points.length) {
+                analysisCostSparkline.innerHTML = '<div class="analysis-empty">No cost data yet</div>';
+            } else {
+                const svgPoints = points
+                    .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+                    .join(' ');
+                analysisCostSparkline.innerHTML = `
+                    <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                        <polyline
+                            fill="none"
+                            stroke="rgba(99, 102, 241, 0.9)"
+                            stroke-width="2"
+                            points="${svgPoints}" />
+                        <line x1="0" y1="38" x2="100" y2="38" stroke="rgba(148, 163, 184, 0.4)" stroke-width="1" />
+                    </svg>
+                    <div class="metric-subtext" style="margin-top: 0.4rem;">Total ${formatCost(costAnalysis.total_cost)}</div>
+                `;
+            }
+        }
+
+        function calculateCostAnalysis(trace, metrics) {
+            const executions = trace.executions || [];
+            const topCostNodes = (metrics.top_cost_nodes || []).map((item) => ({
+                node_id: item.node_id,
+                node_type: item.node_type,
+                path_in_tree: item.path_in_tree,
+                cost: item.cost || 0,
+                duration_ms: item.duration_ms || 0,
+            }));
+            if (!topCostNodes.length) {
+                const nodes = executions
+                    .filter((execution) => (execution.llm_cost || 0) > 0)
+                    .map((execution) => ({
+                        node_id: execution.node_id,
+                        node_type: execution.node_type,
+                        path_in_tree: execution.path_in_tree,
+                        cost: execution.llm_cost || 0,
+                        duration_ms: execution.duration_ms || 0,
+                    }))
+                    .sort((a, b) => b.cost - a.cost)
+                    .slice(0, 5);
+                topCostNodes.push(...nodes);
+            }
+
+            const byTypeMap = new Map();
+            executions.forEach((execution) => {
+                const cost = execution.llm_cost || 0;
+                if (cost <= 0) {
+                    return;
+                }
+                const entry = byTypeMap.get(execution.node_type) || { node_type: execution.node_type, cost: 0, count: 0 };
+                entry.cost += cost;
+                entry.count += 1;
+                byTypeMap.set(execution.node_type, entry);
+            });
+            const byType = Array.from(byTypeMap.values()).sort((a, b) => b.cost - a.cost);
+
+            const costEvents = executions
+                .filter((execution) => (execution.llm_cost || 0) > 0)
+                .map((execution, index) => {
+                    const timeValue = execution.timestamp ? new Date(execution.timestamp).getTime() : index;
+                    return { time: timeValue, cost: execution.llm_cost || 0 };
+                })
+                .sort((a, b) => a.time - b.time);
+
+            let cumulative = 0;
+            const totalCost = costEvents.reduce((sum, item) => sum + item.cost, 0);
+            const points = [];
+            const count = costEvents.length;
+            costEvents.forEach((item, index) => {
+                cumulative += item.cost;
+                const x = count <= 1 ? 100 : (index / (count - 1)) * 100;
+                const y = totalCost > 0 ? 38 - (cumulative / totalCost) * 34 : 38;
+                points.push({ x, y });
+            });
+
+            return {
+                top_cost_nodes: topCostNodes,
+                cost_by_type: byType,
+                cumulative_cost_points: points,
+                total_cost: totalCost,
+            };
+        }
+
         function calculateMetrics(trace) {
             if (!trace || !Array.isArray(trace.executions)) {
                 return null;
@@ -1343,6 +1624,7 @@
             let llmCallCount = 0;
             let totalCost = 0;
             const tokens = { prompt: 0, completion: 0, total: 0 };
+            const byNodeType = new Map();
 
             executions.forEach((execution) => {
                 totalExecutionDuration += execution.duration_ms || 0;
@@ -1361,6 +1643,15 @@
                 if (execution.llm_cost) {
                     totalCost += execution.llm_cost;
                 }
+
+                const typeEntry = byNodeType.get(execution.node_type) || {
+                    node_type: execution.node_type,
+                    count: 0,
+                    cost: 0,
+                };
+                typeEntry.count += 1;
+                typeEntry.cost += execution.llm_cost || 0;
+                byNodeType.set(execution.node_type, typeEntry);
             });
 
             let totalDuration = totalExecutionDuration;
@@ -1383,6 +1674,18 @@
                 total_execution_duration_ms: totalExecutionDuration,
                 total_tokens: tokens,
                 total_cost: totalCost,
+                by_node_type: Array.from(byNodeType.values()).sort((a, b) => b.cost - a.cost),
+                top_cost_nodes: executions
+                    .filter((execution) => (execution.llm_cost || 0) > 0)
+                    .map((execution) => ({
+                        node_id: execution.node_id,
+                        node_type: execution.node_type,
+                        path_in_tree: execution.path_in_tree,
+                        cost: execution.llm_cost || 0,
+                        duration_ms: execution.duration_ms || 0,
+                    }))
+                    .sort((a, b) => b.cost - a.cost)
+                    .slice(0, 5),
             };
         }
 

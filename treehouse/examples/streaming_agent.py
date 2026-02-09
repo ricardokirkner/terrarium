@@ -174,6 +174,18 @@ async def main():
         help="Use mock LLM provider instead of Ollama",
     )
     parser.add_argument(
+        "--mock-cost-per-1k",
+        type=float,
+        default=0.002,
+        help="Mock cost per 1k tokens (default: 0.002)",
+    )
+    parser.add_argument(
+        "--mock-cost-per-call",
+        type=float,
+        default=0.0,
+        help="Mock cost per call (default: 0.0)",
+    )
+    parser.add_argument(
         "--model",
         default="llama3.2",
         help="Ollama model name (default: llama3.2)",
@@ -198,6 +210,8 @@ async def main():
                 },
                 default_response="Yes",
                 simulate_delay_ms=100,
+                cost_per_1k_tokens=args.mock_cost_per_1k,
+                cost_per_call=args.mock_cost_per_call,
             ),
             model="mock-model",
         )

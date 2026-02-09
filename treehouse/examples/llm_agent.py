@@ -19,11 +19,12 @@ Usage:
 """
 
 import argparse
+import asyncio
 import sys
 
 from vivarium.core import BehaviorTree, Selector, Sequence
 
-from treehouse import TraceCollector, print_timeline, print_trace
+from treehouse import DebuggerClient, TraceCollector, print_timeline, print_trace
 from treehouse.llm import (
     LLMAction,
     LLMCondition,
@@ -95,7 +96,12 @@ def create_qa_agent(provider):
     return tree
 
 
-def run_agent(provider, question: str, use_color: bool = True):
+async def run_agent(
+    provider,
+    question: str,
+    use_color: bool = True,
+    debugger_client: DebuggerClient | None = None,
+):
     """Run the Q&A agent with a question and display results."""
     print(f"\nQuestion: {question}")
     print("=" * 60)
@@ -103,6 +109,8 @@ def run_agent(provider, question: str, use_color: bool = True):
     # Create the behavior tree
     root = create_qa_agent(provider)
     collector = TraceCollector()
+    if debugger_client:
+        collector.set_debugger(debugger_client)
     tree = BehaviorTree(root=root, emitter=collector)
 
     # Set up state with the question
@@ -113,7 +121,7 @@ def run_agent(provider, question: str, use_color: bool = True):
 
     # Execute the tree
     try:
-        result = tree.tick(state)
+        result = await asyncio.to_thread(tree.tick, state)
     except LLMConnectionError as e:
         print(f"\nError: {e}")
         print("Make sure Ollama is running: ollama serve")
@@ -121,6 +129,9 @@ def run_agent(provider, question: str, use_color: bool = True):
 
     # Get the trace
     trace = collector.get_trace()
+    if trace is None:
+        print("\nNo trace captured.")
+        return None
 
     # Display results
     print(f"\nResult: {result.value}")
@@ -156,7 +167,7 @@ def run_agent(provider, question: str, use_color: bool = True):
     return trace
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description="LLM-powered Q&A Agent Example")
     parser.add_argument(
         "--model",
@@ -174,6 +185,18 @@ def main():
         help="Use mock provider instead of Ollama",
     )
     parser.add_argument(
+        "--mock-cost-per-1k",
+        type=float,
+        default=0.002,
+        help="Mock cost per 1k tokens (default: 0.002)",
+    )
+    parser.add_argument(
+        "--mock-cost-per-call",
+        type=float,
+        default=0.0,
+        help="Mock cost per call (default: 0.0)",
+    )
+    parser.add_argument(
         "--no-color",
         action="store_true",
         help="Disable colored output",
@@ -183,7 +206,26 @@ def main():
         default="What is the capital of France?",
         help="Question to ask the agent",
     )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Stream events to the Treehouse visualizer",
+    )
+    parser.add_argument(
+        "--server",
+        default="ws://localhost:8000/ws/agent",
+        help="Visualizer server WebSocket URL",
+    )
     args = parser.parse_args()
+
+    # Optional visualizer connection
+    debugger_client = None
+    if args.visualize:
+        debugger_client = DebuggerClient(url=args.server)
+        connected = await debugger_client.connect()
+        if not connected:
+            print("Visualizer connection failed; continuing without streaming.")
+            debugger_client = None
 
     # Create provider
     if args.mock:
@@ -196,6 +238,8 @@ def main():
                     "meaning of life": "No",
                 },
                 default_response="This is a mock response.",
+                cost_per_1k_tokens=args.mock_cost_per_1k,
+                cost_per_call=args.mock_cost_per_call,
             ),
             model="mock-model",
         )
@@ -206,21 +250,28 @@ def main():
     use_color = not args.no_color
 
     # Run with the provided question
-    trace = run_agent(provider, args.question, use_color)
+    try:
+        trace = await run_agent(provider, args.question, use_color, debugger_client)
 
-    if trace is None:
-        sys.exit(1)
+        if trace is None:
+            return 1
 
-    # Run a second example with a more complex question
-    print("\n\n" + "=" * 60)
-    print("SECOND EXAMPLE - Complex Question")
-    print("=" * 60)
-    run_agent(
-        provider,
-        "What are the philosophical implications of artificial consciousness?",
-        use_color,
-    )
+        # Run a second example with a more complex question
+        print("\n\n" + "=" * 60)
+        print("SECOND EXAMPLE - Complex Question")
+        print("=" * 60)
+        await run_agent(
+            provider,
+            "What are the philosophical implications of artificial consciousness?",
+            use_color,
+            debugger_client,
+        )
+    finally:
+        if debugger_client:
+            await debugger_client.disconnect()
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(asyncio.run(main()))

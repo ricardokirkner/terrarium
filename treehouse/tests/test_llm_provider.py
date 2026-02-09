@@ -202,6 +202,21 @@ class TestMockLLMProvider:
         assert response.tokens_used["prompt"] == expected_prompt_tokens
 
     @pytest.mark.asyncio
+    async def test_mock_costs(self):
+        """Test simulated cost calculation."""
+        config = MockConfig(
+            default_response="abcd",
+            cost_per_1k_tokens=1.0,
+            cost_per_call=0.5,
+        )
+        provider = MockLLMProvider(config)
+        response = await provider.complete(LLMRequest(prompt="abcd"))
+
+        # prompt tokens = 1, completion tokens = 1, total = 2
+        assert response.tokens_used["total"] == 2
+        assert response.cost == pytest.approx(0.5 + 2 / 1000)
+
+    @pytest.mark.asyncio
     async def test_simulated_delay(self):
         """Test simulated delay."""
         config = MockConfig(simulate_delay_ms=50)
@@ -236,7 +251,9 @@ class TestMockLLMProvider:
         assert len(provider.requests) == 2
         assert provider.requests[0].prompt == "First"
         assert provider.requests[1].prompt == "Second"
-        assert provider.last_request().prompt == "Second"
+        last_request = provider.last_request()
+        assert last_request is not None
+        assert last_request.prompt == "Second"
 
     @pytest.mark.asyncio
     async def test_fail_after(self):
