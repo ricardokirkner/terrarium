@@ -48,6 +48,7 @@ class ConnectionManager:
     agents: list[WebSocket] = field(default_factory=list)
     # Current trace state (for new viewers joining mid-execution)
     current_trace: dict[str, Any] | None = None
+    tree_structure: dict[str, Any] | None = None
 
     async def connect_viewer(self, websocket: WebSocket) -> None:
         """Accept a new viewer connection."""
@@ -71,6 +72,14 @@ class ConnectionManager:
                         "data": metrics,
                     }
                 )
+
+        if self.tree_structure:
+            await websocket.send_json(
+                {
+                    "type": "tree_structure",
+                    "data": self.tree_structure,
+                }
+            )
 
     async def connect_agent(self, websocket: WebSocket) -> None:
         """Accept a new agent connection."""
@@ -119,20 +128,32 @@ class ConnectionManager:
         for agent in disconnected:
             self.disconnect_agent(agent)
 
-    async def handle_agent_event(self, event: dict[str, Any]) -> None:
+    async def handle_agent_event(self, event: dict[str, Any]) -> None:  # noqa: C901
         """Process an event from an agent and broadcast to viewers."""
         event_type = event.get("type", "unknown")
         logger.info(f"📡 Broadcasting {event_type} to {len(self.viewers)} viewer(s)")
 
         # Update current trace state
         if event_type == "trace_start":
+            metadata: dict[str, Any] = {}
+            if self.tree_structure is not None:
+                metadata["tree_structure"] = self.tree_structure
             self.current_trace = {
                 "trace_id": event.get("trace_id"),
                 "tick_id": event.get("tick_id"),
                 "start_time": event.get("timestamp"),
                 "executions": [],
                 "status": "running",
+                "metadata": metadata,
             }
+        elif event_type == "tree_structure":
+            self.tree_structure = event.get("data", event)
+            if self.current_trace is not None:
+                current_metadata = self.current_trace.get("metadata")
+                if not isinstance(current_metadata, dict):
+                    current_metadata = {}
+                current_metadata["tree_structure"] = self.tree_structure
+                self.current_trace["metadata"] = current_metadata
         elif event_type == "node_execution":
             if self.current_trace:
                 self.current_trace["executions"].append(event.get("data", {}))

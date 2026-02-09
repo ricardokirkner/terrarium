@@ -854,6 +854,7 @@
         let isPaused = false;
         let currentExecutingNode = null; // The single node currently being evaluated
         let breakpoints = new Set(); // Set of node paths with breakpoints
+        let agentIdle = false;
         let timelineZoom = 1;
         let timelineOffset = 0;
         let timelinePanActive = false;
@@ -907,7 +908,14 @@
 
             ws = new WebSocket(wsUrl);
 
+            const connectTimeout = setTimeout(() => {
+                if (ws && ws.readyState === WebSocket.CONNECTING) {
+                    ws.close();
+                }
+            }, 5000);
+
             ws.onopen = () => {
+                clearTimeout(connectTimeout);
                 statusEl.className = 'status-badge status-connected';
                 statusEl.textContent = 'Connected';
                 addEvent('system', 'Connected to server');
@@ -915,6 +923,7 @@
             };
 
             ws.onclose = () => {
+                clearTimeout(connectTimeout);
                 statusEl.className = 'status-badge status-disconnected';
                 statusEl.textContent = 'Disconnected';
                 addEvent('system', 'Disconnected from server');
@@ -924,6 +933,7 @@
             };
 
             ws.onerror = (error) => {
+                clearTimeout(connectTimeout);
                 console.error('WebSocket error:', error);
                 addEvent('error', 'Connection error');
             };
@@ -946,6 +956,12 @@
             switch (type) {
                 case 'trace_state':
                     currentTrace = message.data;
+                    if (currentTrace && currentTrace.metadata && currentTrace.metadata.tree_structure) {
+                        handleTreeStructure(currentTrace.metadata.tree_structure);
+                        currentTrace = mergeTraceWithStructure(currentTrace);
+                    } else if (treeStructureNodes.length > 0) {
+                        currentTrace = mergeTraceWithStructure(currentTrace);
+                    }
                     renderTree();
                     updateMetrics();
                     updateConnectionState(true);
@@ -1019,8 +1035,16 @@
                     // Don't call updateConnectionState - handlePausedEvent already updates button states
                     break;
 
+                case 'agent_idle':
+                    handleAgentIdle(message.data || message);
+                    break;
+
+                case 'agent_active':
+                    handleAgentActive(message.data || message);
+                    break;
+
                 case 'resumed':
-                    handleResumedEvent();
+                    handleResumedEvent(message.data || message);
                     // Don't call updateConnectionState - handleResumedEvent already updates button states
                     break;
                 
@@ -1124,9 +1148,16 @@
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                currentTrace = await response.json();
+                const trace = await response.json();
+                if (trace.metadata && trace.metadata.tree_structure) {
+                    handleTreeStructure(trace.metadata.tree_structure);
+                }
+                currentTrace = treeStructureNodes.length > 0
+                    ? mergeTraceWithStructure(trace)
+                    : trace;
                 renderTree();
                 updateMetrics();
+                updateConnectionState(true);
                 addEvent('system', `Loaded trace ${traceId.slice(0, 8)}`);
             } catch (error) {
                 console.error('Failed to load trace:', error);
@@ -1690,6 +1721,14 @@
         }
 
         function orderExecutionsTopDown(executions) {
+            const structureOrder = new Map();
+            if (treeStructureNodes.length > 0) {
+                treeStructureNodes.forEach((node, index) => {
+                    if (node.path_in_tree) {
+                        structureOrder.set(node.path_in_tree, index);
+                    }
+                });
+            }
             const parentOrder = new Map();
             let parentCounter = 0;
             const siblingOrder = new Map();
@@ -1717,10 +1756,14 @@
                     index,
                     depth: getDepth(path),
                     path,
+                    structureRank: structureOrder.get(path),
                     parentRank: parentOrder.get(parentPath) ?? 0,
                     siblingRank: siblingIndex ?? (siblingOrder.get(siblingKey) ?? 0),
                 };
             }).sort((a, b) => {
+                if (a.structureRank !== undefined && b.structureRank !== undefined) {
+                    return a.structureRank - b.structureRank;
+                }
                 if (a.depth !== b.depth) {
                     return a.depth - b.depth;
                 }
@@ -2157,6 +2200,7 @@
 
         function handlePausedEvent(data) {
             updateDebuggerState(true);
+            agentIdle = false;
             const reason = data.reason || 'unknown';
             const nodePath = data.node_path || data.current_node || '';
             const note = data.note || '';
@@ -2198,7 +2242,15 @@
             }
         }
 
-        function handleResumedEvent() {
+        function handleResumedEvent(data = {}) {
+            if (data.reason === 'step') {
+                addEvent('debugger', 'Step initiated');
+                return;
+            }
+            if (agentIdle) {
+                addEvent('debugger', 'Resume queued (waiting for input)');
+                return;
+            }
             updateDebuggerState(false);
             addEvent('debugger', 'Resumed execution');
             
@@ -2210,6 +2262,37 @@
             const debuggerStateSection = document.getElementById('debugger-state-section');
             if (debuggerStateSection) {
                 debuggerStateSection.style.display = 'none';
+            }
+        }
+
+        function handleAgentIdle(data) {
+            agentIdle = true;
+            if (isPaused) {
+                return;
+            }
+            const note = data.note || 'Awaiting user input';
+            addEvent('debugger', 'Idle: waiting for input');
+
+            if (debuggerStateSection && debuggerState) {
+                debuggerStateSection.style.display = 'block';
+                debuggerState.innerHTML = `
+                    <div style="margin-bottom: 0.5rem;"><strong>💤 Waiting for input</strong></div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">${note}</div>
+                `;
+            }
+        }
+
+        function handleAgentActive(data) {
+            agentIdle = false;
+            if (isPaused) {
+                return;
+            }
+            if (debuggerStateSection && debuggerState) {
+                debuggerStateSection.style.display = 'block';
+                debuggerState.innerHTML = `
+                    <div style="margin-bottom: 0.5rem;"><strong>⚡ Processing input</strong></div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">${data.note || ''}</div>
+                `;
             }
         }
         
@@ -2247,13 +2330,14 @@
                     executions: [...executions], // Use a copy
                     status: 'pending'
                 };
-            } else {
-                // Update existing trace with fresh structure
+            } else if (!currentTrace.executions || currentTrace.executions.length === 0) {
+                // Update existing trace with fresh structure if empty
                 currentTrace.executions = [...executions]; // Use a copy
             }
             
             renderTree();
             addEvent('system', '🌳 Tree structure loaded');
+            updateConnectionState(true);
             
             // Re-send any existing breakpoints to the new agent
             if (breakpoints.size > 0) {
@@ -2263,6 +2347,42 @@
                     sendDebuggerCommand('set_breakpoint', { node_path: nodePath });
                 });
             }
+        }
+
+        function mergeTraceWithStructure(trace) {
+            if (!trace || !Array.isArray(trace.executions)) {
+                return trace;
+            }
+            if (treeStructureNodes.length === 0) {
+                return trace;
+            }
+
+            const baseNodes = treeStructureNodes.map(node => ({ ...node }));
+            const byPath = new Map();
+            baseNodes.forEach((node, index) => {
+                if (node.path_in_tree) {
+                    byPath.set(node.path_in_tree, index);
+                }
+            });
+
+            trace.executions.forEach((execution) => {
+                const path = execution.path_in_tree;
+                const idx = byPath.get(path);
+                if (idx === undefined) {
+                    baseNodes.push(execution);
+                    return;
+                }
+                const originalType = baseNodes[idx].node_type;
+                const originalName = baseNodes[idx].node_name;
+                baseNodes[idx] = { ...baseNodes[idx], ...execution };
+                baseNodes[idx].node_type = originalType;
+                baseNodes[idx].node_name = originalName;
+            });
+
+            return {
+                ...trace,
+                executions: baseNodes,
+            };
         }
         
         function handleNodeExecuting(data) {
@@ -2477,7 +2597,7 @@
 
         // Enable buttons when connected
         function updateConnectionState(connected) {
-            const hasTrace = connected && currentTrace;
+            const hasTrace = connected && (currentTrace || treeStructureNodes.length > 0);
             btnPause.disabled = !hasTrace || isPaused;
             btnResume.disabled = !hasTrace || !isPaused;
             btnStep.disabled = !hasTrace || !isPaused;

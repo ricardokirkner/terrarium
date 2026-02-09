@@ -149,7 +149,13 @@ class DebuggerClient:
                         )
 
                         try:
-                            self.command_handler.handle_command(command, payload)
+                            handler = self.command_handler
+                            if hasattr(handler, "handle_command"):
+                                handler.handle_command(command, payload)
+                            elif callable(handler):
+                                handler(command, payload)
+                            else:
+                                raise AttributeError("command_handler is not callable")
                             logger.info(f"✅ Command {command} handled successfully")
                         except Exception as e:
                             logger.error(f"❌ Error handling command {command}: {e}")
@@ -248,6 +254,10 @@ class DebuggerClient:
                 "timestamp": (timestamp or datetime.now()).isoformat(),
             }
         )
+
+    async def send_event(self, event: dict[str, Any]) -> None:
+        """Send a raw event to the visualizer."""
+        await self._send(event)
 
     async def send_node_execution(self, node_data: dict[str, Any]) -> None:
         """Send a node execution event.
