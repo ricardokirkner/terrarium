@@ -28,6 +28,33 @@ Together, they form a system where agent behavior can be executed, observed, rep
 
 ---
 
+## What problem this solves
+
+Modern assistants are long‑running, tool‑using, and stateful. Traditional logs and metrics flatten decisions into streams of text and counters, making it hard to see *why* a path was taken, *where* cost accumulated, or *what* changed between steps.
+
+Terrarium makes behavior itself observable. It captures the execution structure (not just outputs), ties decisions to state and costs, and lets you inspect a live agent without coupling interpretation to runtime.
+
+---
+
+## How it feels to use
+
+- Start an agent and watch its tree light up in real time.
+- Pause and step through decisions, then inspect each node’s prompt, response, tokens, and cost.
+- Replay a trace, compare runs, and spot where time or money was spent.
+
+You get a clear, structured view of behavior without changing how the agent runs.
+
+---
+
+## What’s different from other agent traces
+
+- **Structure first:** traces are behavior trees, not flat logs.
+- **Separation of concerns:** execution stays independent from observation.
+- **Semantics, not just text:** events represent decisions (entered/exited, success/failure), not just prints.
+- **Live introspection:** breakpoints and step‑through without invasive instrumentation.
+
+---
+
 ## Architecture
 
 Terrarium is a monorepo containing two Python packages and a shared specification.
@@ -80,6 +107,50 @@ BehaviorTree.tick()
        ↓
   TraceCollector → ExecutionTrace → visualization / storage / debugger
 ```
+
+### System diagram
+
+```mermaid
+flowchart LR
+    subgraph Execution
+        A[BehaviorTree] -->|events| B[EventEmitter]
+        A --> C[State]
+    end
+
+    subgraph Observation
+        B --> D[TraceCollector]
+        D --> E[ExecutionTrace]
+        E --> F[Visualizer UI]
+        E --> G[Debugger]
+        E --> H[Trace Storage]
+    end
+
+    subgraph LLM Tools
+        C --> I[LLM Nodes]
+        I --> J[LLM Provider]
+        J --> K[Tokens/Cost]
+        K --> E
+    end
+```
+
+---
+
+## Quickstart (Visualizer)
+
+```bash
+# Terminal 1
+make visualizer
+
+# Terminal 2
+cd treehouse
+python examples/chatbot_with_tools.py --visualize --mock --mock-cost-per-1k 0.01
+```
+
+Try prompts like:
+
+- "what time is it?"
+- "calculate 12 * (3 + 4)"
+- "what did I say last time?"
 
 ---
 
