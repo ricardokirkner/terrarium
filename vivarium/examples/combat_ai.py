@@ -27,7 +27,7 @@ Options:
 import argparse
 import random
 
-from vivarium.core import (
+from vivarium import (
     Action,
     BehaviorTree,
     Condition,

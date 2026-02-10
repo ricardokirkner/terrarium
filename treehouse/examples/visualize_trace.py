@@ -11,7 +11,7 @@ Usage:
 
 import time
 
-from vivarium.core import (
+from vivarium import (
     Action,
     BehaviorTree,
     Condition,

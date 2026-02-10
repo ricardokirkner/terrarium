@@ -1,6 +1,6 @@
 """Tests for execution context."""
 
-from vivarium.core.context import ExecutionContext
+from vivarium.context import ExecutionContext
 
 
 def test_context_tracks_tick_id():

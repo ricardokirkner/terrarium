@@ -1,7 +1,7 @@
 """Tests for LLM behavior tree nodes."""
 
 import pytest
-from vivarium.core import NodeStatus
+from vivarium import NodeStatus
 
 from treehouse.llm import (
     LLMAction,

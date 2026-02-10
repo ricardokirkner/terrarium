@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import Action, NodeStatus, Sequence
+from vivarium import Action, NodeStatus, Sequence
 
 from .helpers import (
     CountingAction,
@@ -83,7 +83,7 @@ class TestActionReset:
 
 class TestActionIsNode:
     def test_action_is_subclass_of_node(self):
-        from vivarium.core import Node
+        from vivarium import Node
 
         assert issubclass(Action, Node)
 

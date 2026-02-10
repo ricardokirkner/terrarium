@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import Condition, NodeStatus, Selector, Sequence
+from vivarium import Condition, NodeStatus, Selector, Sequence
 
 from .helpers import (
     FalseCondition,
@@ -60,7 +60,7 @@ class TestConditionReset:
 
 class TestConditionIsNode:
     def test_condition_is_subclass_of_node(self):
-        from vivarium.core import Node
+        from vivarium import Node
 
         assert issubclass(Condition, Node)
 

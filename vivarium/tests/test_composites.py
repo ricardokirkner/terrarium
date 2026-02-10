@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import (
+from vivarium import (
     BehaviorTree,
     ListEventEmitter,
     Node,

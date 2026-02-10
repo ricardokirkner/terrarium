@@ -655,7 +655,7 @@ def test_print_timeline_all_zero_durations():
 @pytest.mark.integration
 def test_visualization_with_real_trace():
     """Test visualization with a real trace from Vivarium."""
-    from vivarium.core import Action, BehaviorTree, NodeStatus, Sequence, State
+    from vivarium import Action, BehaviorTree, NodeStatus, Sequence, State
 
     from treehouse import TraceCollector
 

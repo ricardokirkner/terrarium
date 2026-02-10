@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import NodeStatus, Sequence, State
+from vivarium import NodeStatus, Sequence, State
 
 from .helpers import IncrementAction, SetValueAction
 

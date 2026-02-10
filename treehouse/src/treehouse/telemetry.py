@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from vivarium.core import Event
+from vivarium import Event
 
 
 @dataclass

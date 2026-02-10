@@ -22,7 +22,7 @@ import argparse
 import asyncio
 import sys
 
-from vivarium.core import BehaviorTree, Selector, Sequence
+from vivarium import BehaviorTree, Selector, Sequence
 
 from treehouse import DebuggerClient, TraceCollector, print_timeline, print_trace
 from treehouse.llm import (

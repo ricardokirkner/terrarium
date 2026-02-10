@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Coroutine, TypeVar
 
-from vivarium.core import Action, Condition, NodeStatus
+from vivarium import Action, Condition, NodeStatus
 
 from treehouse.llm.provider import LLMError, LLMProvider, LLMRequest, LLMResponse
 

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import cast
 
-from vivarium.core import Action, BehaviorTree, NodeStatus, Selector, Sequence
+from vivarium import Action, BehaviorTree, NodeStatus, Selector, Sequence
 
 from treehouse import DebuggerClient, DebuggerTree, TraceCollector
 from treehouse.llm.mock_provider import MockConfig, MockLLMProvider

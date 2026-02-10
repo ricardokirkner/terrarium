@@ -5,7 +5,7 @@ These are intentionally simple implementations that make tests readable and
 self-documenting.
 """
 
-from vivarium.core import Action, Condition, Node, NodeStatus
+from vivarium import Action, Condition, Node, NodeStatus
 
 # =============================================================================
 # Generic Mock Nodes

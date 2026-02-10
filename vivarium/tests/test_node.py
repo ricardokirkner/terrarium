@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import Node, NodeStatus
+from vivarium import Node, NodeStatus
 
 
 class ConcreteSuccessNode(Node):

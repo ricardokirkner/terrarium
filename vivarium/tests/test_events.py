@@ -1,7 +1,7 @@
 """Tests for event types."""
 
-from vivarium.core import NodeStatus
-from vivarium.core.events import (
+from vivarium import NodeStatus
+from vivarium.events import (
     ActionCompleted,
     ActionInvoked,
     ConditionEvaluated,
@@ -159,8 +159,8 @@ def test_list_event_emitter_clear():
 
 
 def test_events_exported_from_core():
-    """Event types should be importable from vivarium.core."""
-    from vivarium.core import (
+    """Event types should be importable from vivarium."""
+    from vivarium import (
         ActionCompleted,
         ActionInvoked,
         ConditionEvaluated,

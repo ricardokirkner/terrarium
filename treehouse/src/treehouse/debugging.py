@@ -19,9 +19,9 @@ from enum import Enum
 from typing import Any, Callable
 
 from vivarium import BehaviorTree, NodeStatus
-from vivarium.core.context import ExecutionContext
-from vivarium.core.events import Event, EventEmitter, NodeEntered
-from vivarium.core.node import Node
+from vivarium.context import ExecutionContext
+from vivarium.events import Event, EventEmitter, NodeEntered
+from vivarium.node import Node
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +378,7 @@ class DebuggerTree:
         self.tree.tick_count += 1
         tick_id = self.tree.tick_count
 
-        from vivarium.core.events import TickCompleted, TickStarted
+        from vivarium.events import TickCompleted, TickStarted
 
         emitter.emit(TickStarted(tick_id=tick_id))
 

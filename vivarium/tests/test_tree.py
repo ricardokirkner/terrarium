@@ -1,6 +1,6 @@
 import pytest
 
-from vivarium.core import (
+from vivarium import (
     Action,
     BehaviorTree,
     Condition,
@@ -10,12 +10,12 @@ from vivarium.core import (
     Sequence,
     State,
 )
-from vivarium.core.events import (
+from vivarium.events import (
     ListEventEmitter,
     TickCompleted,
     TickStarted,
 )
-from vivarium.core.node import Node
+from vivarium.node import Node
 
 from .helpers import (
     FailureAction,

@@ -1,6 +1,6 @@
 """Tests for decorator nodes: Inverter, Repeater, RetryUntilSuccess."""
 
-from vivarium.core import (
+from vivarium import (
     Inverter,
     ListEventEmitter,
     NodeStatus,
@@ -8,7 +8,7 @@ from vivarium.core import (
     RetryUntilSuccess,
     State,
 )
-from vivarium.core.context import ExecutionContext
+from vivarium.context import ExecutionContext
 
 from .helpers import (
     CountingAction,
@@ -541,7 +541,7 @@ class TestDecoratorIntegration:
 
     def test_inverter_in_selector(self):
         """Inverter can flip a success into failure inside a Selector."""
-        from vivarium.core import Selector
+        from vivarium import Selector
 
         inverted = Inverter("inv", SuccessAction("action"))
         fallback = SuccessAction("fallback")
@@ -554,7 +554,7 @@ class TestDecoratorIntegration:
 
     def test_inverter_in_sequence(self):
         """Inverter can turn failure into success for a Sequence."""
-        from vivarium.core import Sequence
+        from vivarium import Sequence
 
         inverted = Inverter("inv", FailureAction("action"))
         next_action = CountingAction("counter")
@@ -576,7 +576,7 @@ class TestDecoratorIntegration:
 
     def test_repeater_with_state_modification(self):
         """Repeater executes child multiple times, modifying state."""
-        from vivarium.core import State
+        from vivarium import State
 
         child = CountingAction("counter")
         repeater = Repeater("rep", child, max_repeats=3)

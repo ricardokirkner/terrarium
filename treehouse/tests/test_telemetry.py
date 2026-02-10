@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from vivarium.core import (
+from vivarium import (
     BehaviorTree,
     NodeEntered,
     NodeExited,
@@ -703,7 +703,7 @@ class SuccessAction:
 
     def tick(self, state, emitter=None, ctx=None):
         if emitter and ctx:
-            from vivarium.core import ActionCompleted, ActionInvoked
+            from vivarium import ActionCompleted, ActionInvoked
 
             node_ctx = ctx.child(self.name, "Action")
             emitter.emit(
@@ -732,7 +732,7 @@ class SuccessAction:
 @pytest.mark.integration
 def test_trace_collector_with_vivarium_tree():
     """TraceCollector should work with a real Vivarium BehaviorTree."""
-    from vivarium.core import Action
+    from vivarium import Action
 
     class SimpleAction(Action):
         def __init__(self, name: str):

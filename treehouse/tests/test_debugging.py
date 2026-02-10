@@ -13,7 +13,7 @@ from vivarium import (
     Sequence,
     State,
 )
-from vivarium.core.decorators import Inverter
+from vivarium.decorators import Inverter
 
 from treehouse.debugging import BreakpointConfig, DebuggerCommand, DebuggerTree
 from treehouse.telemetry import TraceCollector
