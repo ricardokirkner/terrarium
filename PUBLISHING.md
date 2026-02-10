@@ -41,16 +41,22 @@ You need PyPI accounts for both packages:
 
 ### Step 4: Test the Build Locally (Optional)
 
+First, make sure dependencies are installed:
+
+```bash
+make install
+```
+
+Then build the packages:
+
 ```bash
 # Test building vivarium
 cd vivarium
-uv run pip install build
 uv run python -m build
 ls dist/  # Should show vivarium-0.1.0.tar.gz and vivarium-0.1.0-py3-*.whl
 
 # Test building treehouse
 cd ../treehouse
-uv run pip install build
 uv run python -m build
 ls dist/  # Should show treehouse-0.1.0.tar.gz and treehouse-0.1.0-py3-*.whl
 ```
@@ -78,19 +84,25 @@ Watch progress at: https://github.com/ricardokirkner/terrarium/actions
 If you prefer to publish manually:
 
 ```bash
-# Build
+# First ensure dev dependencies are installed
+make install
+
+# Build vivarium
 cd vivarium
 uv run python -m build
 
-# Publish (requires twine)
-uv run pip install twine
+# Publish vivarium
 uv run twine upload dist/*
 
-# Repeat for treehouse
+# Build treehouse
 cd ../treehouse
 uv run python -m build
+
+# Publish treehouse
 uv run twine upload dist/*
 ```
+
+Note: `twine` is included in the dev dependencies, so `uv run twine upload` will work after `make install`.
 
 ## Verify Publication
 

@@ -38,9 +38,11 @@ markers = [
 [dependency-groups]
 dev = [
   "black>=26.1.0",
+  "build>=1.0.0",
   "pre-commit>=4.5.1",
   "pytest>=9.0.2",
   "pytest-coverage>=0.0",
   "pytest-watch>=4.2.0",
   "ruff>=0.14.14",
+  "twine>=5.0.0",
 ]
