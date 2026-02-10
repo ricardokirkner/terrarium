@@ -1,5 +1,5 @@
 [project]
-name = "treehouse"
+name = "terrarium-treehouse"
 version = "0.1.0"
 description = "Treehouse is an external observability and interpretability tool for behavior-tree-driven agents"
 readme = "README.md"
@@ -9,7 +9,7 @@ authors = [
     {name = "Ricardo Kirkner", email = "ricardo@kirkner.com.ar"}
 ]
 dependencies = [
-    "vivarium",
+    "terrarium-vivarium",
 ]
 
 [project.optional-dependencies]
@@ -20,7 +20,7 @@ visualizer = [
 ]
 
 [tool.uv.sources]
-vivarium = { path = "../vivarium" }
+terrarium-vivarium = { path = "../vivarium" }
 
 [build-system]
 requires = ["hatchling"]

@@ -1,5 +1,5 @@
 [project]
-name = "vivarium"
+name = "terrarium-vivarium"
 version = "0.1.0"
 description = "Vivarium is a behavior tree execution environment"
 readme = "README.md"
