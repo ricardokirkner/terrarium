@@ -1,5 +1,7 @@
 """Treehouse: External observability and interpretability for behavior trees."""
 
+__version__ = "0.1.0"
+
 from treehouse.debugger import DebuggerClient
 from treehouse.debugging import BreakpointConfig, DebuggerCommand, DebuggerTree
 from treehouse.metrics import calculate_metrics
@@ -12,6 +14,7 @@ from treehouse.visualization import (
 )
 
 __all__ = [
+    "__version__",
     "BreakpointConfig",
     "DebuggerClient",
     "DebuggerCommand",

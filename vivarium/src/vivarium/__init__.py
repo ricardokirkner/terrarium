@@ -1,3 +1,5 @@
+__version__ = "0.1.0"
+
 from .actions import Action
 from .composites import Parallel, Selector, Sequence
 from .conditions import Condition
@@ -20,6 +22,7 @@ from .status import NodeStatus
 from .tree import BehaviorTree
 
 __all__ = [
+    "__version__",
     "Action",
     "ActionCompleted",
     "ActionInvoked",
