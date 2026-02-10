@@ -3,8 +3,12 @@ name = "vivarium"
 version = "0.1.0"
 description = "Vivarium is a behavior tree execution environment"
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.13"
 dependencies = []
+authors = [
+    {name = "Ricardo Kirkner", email = "ricardo@kirkner.com.ar"}
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -3,7 +3,11 @@ name = "treehouse"
 version = "0.1.0"
 description = "Treehouse is an external observability and interpretability tool for behavior-tree-driven agents"
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.13"
+authors = [
+    {name = "Ricardo Kirkner", email = "ricardo@kirkner.com.ar"}
+]
 dependencies = [
     "vivarium",
 ]
