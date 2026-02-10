@@ -197,8 +197,130 @@ make test-coverage     # tests with coverage report
 
 ---
 
+## Installation
+
+### From PyPI (coming soon)
+
+```bash
+pip install vivarium
+pip install treehouse[visualizer]
+```
+
+### From source
+
+```bash
+git clone https://github.com/ricardokirkner/terrarium.git
+cd terrarium
+make install
+```
+
+---
+
+## Getting Started
+
+### 1. Define a simple tree
+
+```python
+from vivarium.core import Action, Sequence, BehaviorTree, NodeStatus
+
+class Greet(Action):
+    def execute(self, state):
+        print(f"Hello, {state.get('name', 'World')}!")
+        return NodeStatus.SUCCESS
+
+tree = BehaviorTree(
+    root=Sequence(children=[
+        Greet(name="greet")
+    ])
+)
+```
+
+### 2. Observe with Treehouse
+
+```python
+from treehouse import TraceCollector
+
+collector = TraceCollector()
+tree.set_emitter(collector)
+
+state = {}
+tree.tick(state)
+
+trace = collector.get_trace()
+print(collector.format_trace(trace))
+```
+
+### 3. Watch with the web visualizer
+
+```bash
+make visualizer
+python examples/chatbot_with_tools.py --visualize --mock
+```
+
+Open http://localhost:8000 to see live execution.
+
+---
+
+## Examples
+
+- **chatbot_with_tools.py** — Interactive agent with tool calling and cost tracking
+- **llm_agent.py** — LLM-driven decision making with state management
+- **combat_ai.py** — Game AI using behavior trees
+- **breakpoint_demo.py** — Debugging with breakpoints and step-through
+
+See `treehouse/examples/` for more.
+
+---
+
+## Documentation
+
+- **[Event Boundary](docs/event-boundary.md)** — The contract between Vivarium and Treehouse
+- **[Missing Features](MISSING_FEATURES.md)** — Planned features for v0.2+
+- **[Contributing](CONTRIBUTING.md)** — How to contribute
+
+---
+
 ## Status
 
-Terrarium is early-stage and experimental.
+Terrarium is **early-stage and experimental**. 
+
+**Current state:**
+- ✅ Execution engine (Vivarium) — stable, 236 tests
+- ✅ Observability (Treehouse) — stable, 252 tests
+- ✅ Event boundary (v0) — stable, well-specified
+- ✅ Web visualizer — functional
+- ✅ LLM integration (OpenAI, Anthropic, Ollama) — working
+- ⚠️ Trace comparison — planned (v0.2)
+- ⚠️ Cost visualization — planned (v0.2)
+- ⚠️ State snapshots — planned (v0.2)
 
 The separation between execution and interpretation is intentional and foundational. APIs will evolve; the boundary will remain.
+
+---
+
+## License
+
+Terrarium is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+Report issues, suggest features, or submit pull requests on [GitHub](https://github.com/ricardokirkner/terrarium).
+
+---
+
+## Citation
+
+If you use Terrarium in research or production, please cite:
+
+```bibtex
+@software{terrarium2026,
+  author = {Kirkner, Ricardo},
+  title = {Terrarium: Behavior Tree Execution and Observability for LLM Agents},
+  url = {https://github.com/ricardokirkner/terrarium},
+  year = {2026}
+}
+```
