@@ -1,6 +1,6 @@
 [project]
 name = "terrarium-treehouse"
-version = "0.1.0"
+version = "0.1.1"
 description = "Treehouse is an external observability and interpretability tool for behavior-tree-driven agents"
 readme = "README.md"
 license = {text = "Apache-2.0"}

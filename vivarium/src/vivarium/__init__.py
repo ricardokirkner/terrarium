@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .actions import Action
 from .composites import Parallel, Selector, Sequence
