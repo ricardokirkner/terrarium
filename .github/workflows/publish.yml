@@ -55,15 +55,15 @@ jobs:
       - name: Publish vivarium to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/vivarium/
+         packages-dir: dist/vivarium/dist/
 
-  publish-treehouse:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
+      publish-treehouse:
+      needs: build
+      runs-on: ubuntu-latest
+      environment:
       name: pypi-treehouse
       url: https://pypi.org/project/treehouse/
-    steps:
+      steps:
       - uses: actions/download-artifact@v4
         with:
           name: distributions
@@ -72,4 +72,4 @@ jobs:
       - name: Publish treehouse to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/treehouse/
+          packages-dir: dist/treehouse/dist/
