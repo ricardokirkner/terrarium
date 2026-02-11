@@ -1,153 +1,208 @@
 # Contributing to Terrarium
 
-Thank you for your interest in contributing! This document outlines how to get started.
+Thank you for your interest in contributing to Terrarium! We welcome bug reports, feature suggestions, and pull requests.
 
 ## Code of Conduct
 
-Please be respectful and constructive in all interactions.
+This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to ricardo@kirkner.com.ar.
 
-## Getting Started
+## Reporting Bugs
+
+Before submitting a bug report:
+- Check the [issues](https://github.com/ricardokirkner/terrarium/issues) to see if the bug has already been reported
+- Include as much detail as possible:
+  - A clear title and description
+  - Python version and OS
+  - Steps to reproduce the issue
+  - Expected vs. actual behavior
+  - Relevant code examples or tracebacks
+
+## Suggesting Features
+
+Feature suggestions are tracked as [GitHub Issues](https://github.com/ricardokirkner/terrarium/issues).
+
+When suggesting a feature:
+- Use a clear, descriptive title
+- Provide a detailed description of the desired behavior
+- Explain why this feature would be useful
+- List examples of how it would be used
+- Note if this would be a breaking change
+
+## Development Setup
 
 ### Prerequisites
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [Make](https://www.gnu.org/software/make/)
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) for package management
-- Git
+### Local Development
 
-### Setup
+1. Fork the repository on GitHub
+2. Clone your fork locally:
+   ```bash
+   git clone https://github.com/your-username/terrarium.git
+   cd terrarium
+   ```
 
-```bash
-git clone https://github.com/ricardokirkner/terrarium.git
-cd terrarium
-make install
-```
+3. Install dependencies:
+   ```bash
+   make install
+   ```
 
-## Development Workflow
+4. Create a feature branch:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
 ### Running Tests
 
 ```bash
-# From root (runs all tests)
+# Run all tests
 make test
 
-# From a package directory
-cd vivarium
-make test
+# Run unit tests only
+make test-unit
 
-# Run specific test
-uv run pytest tests/test_tree.py::test_name -v
+# Run integration tests only
+make test-integration
+
+# Run a specific test file
+uv run pytest tests/test_file.py -v
+
+# Run a specific test
+uv run pytest tests/test_file.py::test_name -v
 ```
 
 ### Code Quality
 
 ```bash
-# Format and lint (required before PR)
+# Run linting and formatting checks
 make check
 
-# Full CI pipeline
+# Run full CI pipeline (check + test)
 make ci
 ```
 
-### Commit Messages
+The project uses:
+- **ruff** for linting
+- **black** for code formatting
+- **pytest** for testing
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+## Submitting Pull Requests
 
-```
-feat: add trace comparison API
-fix: prevent double-pause when stepping
-docs: update README with examples
-chore: update dependencies
-```
-
-## What to Work On
-
-### Good First Issues
-
-- Documentation improvements
-- Example code
-- Test coverage gaps
-- Bug fixes
-
-### Planned Features (v0.2+)
-
-See [MISSING_FEATURES.md](MISSING_FEATURES.md) for the roadmap:
-
-- Trace comparison and diffing
-- Cost visualization
-- State snapshots
-- Event filtering in visualizer
-- Tree validation and linting
-
-### Before Starting Large Work
-
-For significant features or changes:
-
-1. **Open an issue** describing the feature or problem
-2. **Wait for feedback** before investing time
-3. **Discuss approach** to ensure alignment with project vision
-
-## Architecture Guidelines
-
-### Vivarium (Execution)
-
-- **Zero external dependencies** — keep it minimal
-- **Deterministic execution** — same inputs always produce same outputs
-- **Event-driven** — emit structured events, don't couple to observers
-- Tests in `tests/`, implementation in `src/vivarium/core/`
-
-### Treehouse (Observation)
-
-- **Observer pattern** — implements `EventEmitter` protocol
-- **Decoupled from Vivarium** — could observe other behavior tree engines
-- **Optional dependencies** — visualizer requires FastAPI, but core doesn't
-- Tests in `tests/`, implementation in `src/treehouse/`
-
-## Testing Requirements
-
-- **Unit tests** for all new functionality
-- **Integration tests** marked with `@pytest.mark.integration` for multi-module tests
-- Maintain **>85% code coverage** for new code
-- All tests must pass: `make test`
-
-## Pull Request Process
-
-1. **Fork and create a feature branch**
-   ```bash
-   git checkout -b feature/my-feature
-   ```
-
-2. **Make your changes** with tests
-
-3. **Ensure code quality**
+1. Ensure your code passes all checks:
    ```bash
    make ci
    ```
 
-4. **Push and open a PR** with a clear description
+2. Write clear commit messages:
+   - First line: concise summary (50 chars max)
+   - Blank line
+   - Detailed explanation if needed
 
-5. **Respond to review feedback** promptly
+3. Push your branch to your fork:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
 
-## Documentation Standards
+4. Create a pull request on GitHub:
+   - Reference any related issues
+   - Describe what the PR does and why
+   - List any breaking changes
 
-- Add docstrings to all public functions/classes
-- Update README if adding user-facing features
-- Include examples in docstrings for complex features
-- Mention breaking changes in commit message
+### PR Guidelines
 
-## Release Process (Maintainers)
+- Keep PRs focused on a single feature or fix
+- Add tests for new functionality
+- Ensure all existing tests pass
+- Update documentation if needed
+- Follow the style guide (see below)
 
-1. Update version in both `pyproject.toml` files
-2. Update `CHANGELOG.md` with user-facing changes
-3. Create git tag: `git tag -a v0.X.Y -m "Release v0.X.Y"`
-4. Push tag and commits
-5. GitHub Actions publishes to PyPI automatically
+## Style Guide
+
+### Python Code Style
+
+We use **ruff** for linting and **black** for formatting. These tools are automatically run by `make check`.
+
+Key rules:
+- Line length: 88 characters (enforced by black)
+- Use meaningful variable and function names
+- Add docstrings to public classes and functions
+- Type hints are encouraged but not required
+
+### Imports
+
+- Organize imports in three groups: standard library, third-party, local
+- Use relative imports within `src/vivarium/core/`
+- `ruff` enforces import organization automatically
+
+### Testing
+
+- Write tests for all public APIs and functionality
+- Use pytest for test organization
+- Use clear test names: `test_<component>_<behavior>`
+- Mark integration tests with `@pytest.mark.integration`
+- Aim for high coverage of new code
+
+Example:
+```python
+def test_sequence_executes_children_in_order(state):
+    """Sequence should execute children sequentially."""
+    action1 = SuccessAction()
+    action2 = SuccessAction()
+    seq = Sequence([action1, action2])
+    
+    status = seq.execute(state)
+    
+    assert status == NodeStatus.SUCCESS
+    assert action1.executed
+    assert action2.executed
+```
+
+### Documentation
+
+- Update `README.md` if your changes affect usage
+- Update relevant docs in `docs/` directory
+- Add docstrings to new functions/classes
+- Keep examples up to date
+
+## Project Structure
+
+```
+terrarium/
+├── vivarium/              # Behavior tree execution engine
+│   ├── src/vivarium/
+│   │   ├── core/         # Core execution logic
+│   │   └── __init__.py
+│   ├── tests/            # Unit and integration tests
+│   ├── examples/         # Example behavior trees
+│   └── pyproject.toml
+├── treehouse/             # Observability and visualization tool
+│   ├── src/treehouse/
+│   │   ├── nodes/        # LLM node implementations
+│   │   ├── debugger/     # Tree debugger
+│   │   └── __init__.py
+│   ├── tests/
+│   ├── examples/
+│   └── pyproject.toml
+├── docs/                  # Documentation
+│   └── event-boundary.md # Event contract specification
+├── Makefile              # Build targets
+└── README.md
+```
+
+## Architecture Overview
+
+- **Vivarium**: Pure behavior tree execution with deterministic semantics
+- **Treehouse**: External observability tool that consumes vivarium execution events
+- **Event Boundary**: The shared contract between execution and observation (see `docs/event-boundary.md`)
+
+See [README.md](README.md) for more details.
 
 ## Questions?
 
-- **Issues**: Use GitHub Issues for bugs and feature requests
-- **Discussions**: Use GitHub Discussions for questions and design ideas
-- **Email**: ricardo@kirkner.com.ar for direct contact
+Feel free to open an issue or contact us at ricardo@kirkner.com.ar.
 
 ---
 
-Thank you for contributing to Terrarium!
+**Thank you for contributing to Terrarium!**

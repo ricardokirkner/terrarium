@@ -12,6 +12,12 @@ dependencies = [
     "terrarium-vivarium",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ricardokirkner/terrarium"
+Documentation = "https://github.com/ricardokirkner/terrarium/tree/main/docs"
+Repository = "https://github.com/ricardokirkner/terrarium.git"
+Issues = "https://github.com/ricardokirkner/terrarium/issues"
+
 [project.optional-dependencies]
 visualizer = [
     "fastapi>=0.115.0",

@@ -10,6 +10,12 @@ authors = [
     {name = "Ricardo Kirkner", email = "ricardo@kirkner.com.ar"}
 ]
 
+[project.urls]
+Homepage = "https://github.com/ricardokirkner/terrarium"
+Documentation = "https://github.com/ricardokirkner/terrarium/tree/main/docs"
+Repository = "https://github.com/ricardokirkner/terrarium.git"
+Issues = "https://github.com/ricardokirkner/terrarium/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

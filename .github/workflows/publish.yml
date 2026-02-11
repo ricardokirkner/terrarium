@@ -5,43 +5,71 @@ on:
     tags:
       - "v*"
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+permissions:
+  contents: read
+  id-token: write
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+      - name: Install build dependencies
+        run: uv pip install build
 
       - name: Build vivarium
-        run: |
-          cd vivarium
-          uv run pip install build
-          uv run python -m build
+        run: cd vivarium && python -m build
 
       - name: Build treehouse
-        run: |
-          cd treehouse
-          uv run pip install build
-          uv run python -m build
+        run: cd treehouse && python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            vivarium/dist/
+            treehouse/dist/
+
+  publish-vivarium:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-vivarium
+      url: https://pypi.org/project/vivarium/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
 
       - name: Publish vivarium to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN_VIVARIUM }}
-          packages-dir: vivarium/dist/
+          packages-dir: dist/vivarium/
+
+  publish-treehouse:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-treehouse
+      url: https://pypi.org/project/treehouse/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
 
       - name: Publish treehouse to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN_TREEHOUSE }}
-          packages-dir: treehouse/dist/
+          packages-dir: dist/treehouse/
