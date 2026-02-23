@@ -5,21 +5,22 @@ This guide covers publishing Terrarium packages (Vivarium and Treehouse) to PyPI
 ## Prerequisites
 
 You need PyPI accounts for both packages:
-- https://pypi.org/project/vivarium/
-- https://pypi.org/project/treehouse/
+
+- <https://pypi.org/project/terrarium-vivarium/>
+- <https://pypi.org/project/terrarium-treehouse/>
 
 ### Step 1: Create PyPI Accounts
 
-1. Go to https://pypi.org/account/register/
+1. Go to <https://pypi.org/account/register/>
 2. Create two accounts (or use the same account):
-   - One for `vivarium` package
-   - One for `treehouse` package
+   - One for `terrarium-vivarium` package
+   - One for `terrarium-treehouse` package
 
 (You can use the same PyPI account for both, or separate ones for finer-grained token control)
 
 ### Step 2: Create API Tokens
 
-1. Go to https://pypi.org/manage/account/
+1. Go to <https://pypi.org/manage/account/>
 2. Scroll to "API tokens" section
 3. Click "Add API token"
 4. Give it a name: `github-terrarium` (or similar)
@@ -29,7 +30,7 @@ You need PyPI accounts for both packages:
 
 ### Step 3: Add Secrets to GitHub
 
-1. Go to https://github.com/ricardokirkner/terrarium/settings/secrets/actions
+1. Go to <https://github.com/ricardokirkner/terrarium/settings/secrets/actions>
 2. Click "New repository secret"
 3. Add two secrets:
    - **Name**: `PYPI_API_TOKEN_VIVARIUM`
@@ -73,11 +74,12 @@ git push origin v0.2.0
 ```
 
 This will:
+
 1. Run tests in `.github/workflows/tests.yml`
 2. Build packages
 3. Publish to PyPI via `.github/workflows/publish.yml`
 
-Watch progress at: https://github.com/ricardokirkner/terrarium/actions
+Watch progress at: <https://github.com/ricardokirkner/terrarium/actions>
 
 ### Manual
 
@@ -110,8 +112,8 @@ After publishing, verify packages appear on PyPI:
 
 ```bash
 # Test installation from PyPI
-pip install vivarium
-pip install treehouse[visualizer]
+pip install terrarium-vivarium
+pip install terrarium-treehouse[visualizer]
 
 # Check versions
 python -c "import vivarium; print(vivarium.__version__)"
@@ -119,21 +121,25 @@ python -c "import treehouse; print(treehouse.__version__)"
 ```
 
 Or check directly:
-- https://pypi.org/project/vivarium/
-- https://pypi.org/project/treehouse/
+
+- <https://pypi.org/project/terrarium-vivarium/>
+- <https://pypi.org/project/terrarium-treehouse/>
 
 ## Troubleshooting
 
 ### "Invalid or missing PyPI token"
+
 - Verify token is copied correctly (no extra spaces)
 - Verify secret names match exactly: `PYPI_API_TOKEN_VIVARIUM`, `PYPI_API_TOKEN_TREEHOUSE`
 - Try regenerating the token on PyPI
 
 ### "Package already exists"
+
 - Each version can only be published once
 - If you need to re-publish, increment the version in pyproject.toml and re-tag
 
 ### Build fails locally
+
 - Ensure `build` package is installed: `uv run pip install build`
 - Check pyproject.toml has correct metadata (name, version, author, etc.)
 - Verify no uncommitted changes in package directories
@@ -143,6 +149,7 @@ Or check directly:
 When preparing a new release:
 
 1. Update version in both `pyproject.toml` files:
+
    ```toml
    [project]
    version = "0.2.0"
@@ -151,12 +158,14 @@ When preparing a new release:
 2. Update `CHANGELOG.md` with release notes
 
 3. Commit changes:
+
    ```bash
    git add vivarium/pyproject.toml treehouse/pyproject.toml CHANGELOG.md
    git commit -m "chore: bump version to 0.2.0"
    ```
 
 4. Create and push tag:
+
    ```bash
    git tag -a v0.2.0 -m "Release v0.2.0"
    git push origin main
